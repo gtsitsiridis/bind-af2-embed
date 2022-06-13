@@ -6,6 +6,7 @@ import pandas as pd
 from typing import Dict
 from utils import FileManager
 from pathlib import Path
+from config import AppConfig
 
 
 class Embedding(object):
@@ -157,13 +158,13 @@ class Sequence(object):
 
 class Dataset(object):
 
-    def __init__(self, embeddings_file: str, fasta_file: str, splits_ids_files: list,
-                 binding_residues_file_dict: dict, distogram_dir: str):
-        self.__sequences = Sequence.read_fasta(fasta_file)
-        self.__ids, self.__fold_array = FileManager.read_split_ids(splits_ids_files)
-        self._set_labels(binding_residues_file_dict)
-        self.__embeddings = Embedding.read_embeddings(embeddings_file)
-        self.__distograms = Distogram.read_distograms(distogram_dir)
+    def __init__(self, config: AppConfig):
+        files = config.get_files()
+        self.__sequences = Sequence.read_fasta(files['sequences'])
+        self.__ids, self.__fold_array = FileManager.read_split_ids(files['splits'])
+        self._set_labels(files['biolip_annotations'])
+        self.__embeddings = Embedding.read_embeddings(files['embeddings'])
+        self.__distograms = Distogram.read_distograms(files['distogram_dir'])
 
     @staticmethod
     def _get_zero_based_residues(residues):

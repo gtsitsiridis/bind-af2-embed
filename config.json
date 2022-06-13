@@ -1,0 +1,20 @@
+{
+  "files": {
+    "embeddings": "../data/input/bindembed_embeddings.h5",
+    "distogram_dir": "../data/input/af2/dist_maps_af2",
+    "sequences": "../data/input/sequences.fasta",
+    "biolip_annotations": {
+      "small": "../data/input/biolip/binding_residues_2.5_small.txt",
+      "metal": "../data/input/biolip/binding_residues_2.5_metal.txt",
+      "nuclear": "../data/input/biolip/binding_residues_2.5_nuclear.txt"
+    },
+    "splits": [
+      "../data/input/splits/ids_split1.txt",
+      "../data/input/splits/ids_split2.txt",
+      "../data/input/splits/ids_split3.txt",
+      "../data/input/splits/ids_split4.txt",
+      "../data/input/splits/ids_split5.txt",
+      "../data/input/splits/uniprot_test.txt"
+    ]
+  }
+}
