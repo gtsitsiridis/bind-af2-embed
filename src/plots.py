@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 from typing import Dict
+from umap import UMAP
 
 
 class Plots(object):
