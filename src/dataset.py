@@ -272,8 +272,13 @@ class Dataset(object):
     def get_long_data(self) -> (pd.DataFrame, np.array, np.array, np.array):
         """
         Combine all sequence info.
-        :return: dataframe containing info for each residue in each protein, np array containing associated embeddings,
-        np array containing associated embeddings, np array containing distograms
+
+        :return:
+        dataframe containing info for each residue in each protein,
+        np array (M, 1024) containing associated embeddings,
+        np array (M, 4) containing associated binding residue labels,
+        np array (M, 2 * L_MAX) containing distograms,
+        where M are the total residues and L_MAX the maximum protein length in the dataset
         """
 
         sequences = self.__sequences
