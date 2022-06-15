@@ -7,6 +7,8 @@ from typing import Dict
 from utils import FileManager
 from pathlib import Path
 from config import AppConfig
+from plots import Plots
+from umap import UMAP
 
 
 class Embedding(object):
@@ -38,32 +40,76 @@ class Embedding(object):
         return embeddings
 
 
-class Distogram(object):
-    def __init__(self, tensor: np.array, prot_id: str):
-        self._tensor = tensor
+class ProteinStructure(object):
+    def __init__(self, distogram_tensor: np.array, pdb_file: str,
+                 plddt_tensor: np.array, prot_id: str):
+        self._pdb_file = pdb_file
+        self._plddt_tensor = plddt_tensor
+        self._distogram_tensor = distogram_tensor
         self._prot_id = prot_id
 
     @property
-    def tensor(self) -> np.array:
-        return self._tensor
+    def distogram_tensor(self) -> np.array:
+        return self._distogram_tensor
+
+    @property
+    def pdb_file(self) -> str:
+        return self._pdb_file
+
+    @property
+    def plddt_tensor(self) -> np.array:
+        return self._plddt_tensor
+
+    @property
+    def prot_id(self) -> str:
+        return self._prot_id
+
+    def distogram_tensor_2D(self) -> np.array:
+        return self.distogram_tensor.reshape(self.distogram_tensor.shape[0], -1)
+
+    def avg_plddt(self) -> float:
+        return float(np.mean(self._plddt_tensor))
 
     @staticmethod
-    def parse_files(distogram_dir) -> Dict[str, Distogram]:
+    def parse_files(distogram_dir: str, pdb_dir: str) -> Dict[str, ProteinStructure]:
         """
-        Read distograms from directory containing npy files
-        :param distogram_dir:
-        :return: dict with key: ID, value: distogram
+        Parse protein structure related files.
+        :param pdb_dir: directory containing .pdb files
+        :param distogram_dir: directory containing npy files
+        :return: dict with key: ID, value: ProteinStructure
         """
 
         distogram_dir_path = Path(distogram_dir)
+        pdb_dir_path = Path(pdb_dir)
         assert distogram_dir_path.is_dir(), 'distogram_dir should be a directory'
+        assert pdb_dir_path.is_dir(), 'pdb_dir should be a directory'
 
-        distograms = dict()
+        distograms: Dict[str, np.array] = dict()
+        pdb_files: Dict[str, str] = dict()
+        plddts: Dict[str, np.array] = dict()
         for file in distogram_dir_path.iterdir():
             assert file.suffix == '.npy', f'invalid file found: {file.name}'
             prot_id = file.name.split('.')[0]
-            distograms[prot_id] = Distogram(tensor=np.load(str(file)), prot_id=prot_id)
-        return distograms
+            distograms[prot_id] = np.load(str(file))
+
+        for file in pdb_dir_path.iterdir():
+            assert file.suffix == '.pdb', f'invalid file found: {file.name}'
+            prot_id = file.name.split('_')[0]
+            pdb_files[prot_id] = str(file)
+
+            with open(str(file), "r") as f:
+                lines = f.readlines()[1:-3]
+                plddt_tensor = np.array(list(map(lambda line: float(line.split()[-2]), lines)))
+                plddts[prot_id] = plddt_tensor
+
+        structures: Dict[str, ProteinStructure] = dict()
+        for prot_id in distograms.keys():
+            structures[prot_id] = ProteinStructure(distogram_tensor=distograms[prot_id],
+                                                   pdb_file=pdb_files[prot_id],
+                                                   plddt_tensor=plddts[prot_id],
+                                                   prot_id=prot_id)
+
+        return structures
 
 
 class BindAnnotation(object):
@@ -82,12 +128,15 @@ class BindAnnotation(object):
 
         return result
 
-    def to_list(self) -> list:
+    def to_ids(self) -> list:
         return [''.join(x) for x in self._tensor.astype(str)]
 
     @property
     def tensor(self) -> np.array:
         return self._tensor
+
+    def to_names(self) -> list:
+        return list(map(lambda x: self.ids2name(x), self.to_ids()))
 
     def __len__(self):
         return len(self._tensor)
@@ -222,32 +271,75 @@ class Sequence(object):
 
 class ProteinData(object):
     def __init__(self, prot_id: str, sequence: Sequence, embedding: Embedding, bind_annotation: BindAnnotation,
-                 distogram: Distogram):
+                 structure: ProteinStructure):
         self._prot_id = prot_id
         self._bind_annotation = bind_annotation
         self._embedding = embedding
         self._sequence = sequence
-        self._distogram = distogram
+        self._structure = structure
 
     @property
     def prot_id(self):
-        return self.prot_id
+        return self._prot_id
 
     @property
-    def bind_annotation(self):
+    def bind_annotation(self) -> BindAnnotation:
         return self._bind_annotation
 
     @property
-    def embedding(self):
+    def embedding(self) -> Embedding:
         return self._embedding
 
     @property
-    def sequence(self):
+    def sequence(self) -> Sequence:
         return self._sequence
 
     @property
-    def distogram(self):
-        return self._distogram
+    def structure(self) -> ProteinStructure:
+        return self._structure
+
+    def show_structure(self, show_mainchains: bool = False, show_sidechains: bool = False, color='lDDT'):
+        Plots.show_pdb(pdb_file=self.structure.pdb_file, show_mainchains=show_mainchains,
+                       bind_annot_names=self.bind_annotation.to_names(),
+                       show_sidechains=show_sidechains,
+                       color=color)
+        if color == 'lDDT':
+            Plots.plot_plddt_legend()
+        if color == 'ligand':
+            Plots.plot_ligand_legend()
+
+    def show_umap(self, n_neighbors: int = 30, color: str = 'ligand', write: bool = False):
+        distogram_tensor = self.structure.distogram_tensor_2D()
+        embedding_tensor = self.embedding.tensor
+
+        assert distogram_tensor.shape[0] == len(self), 'invalid distogram in the dataset'
+
+        X = np.concatenate([distogram_tensor, embedding_tensor], axis=1)
+        umap_2d = UMAP(n_neighbors=n_neighbors, n_components=2, init='random', random_state=42, verbose=True)
+        umap_proj_2d = umap_2d.fit_transform(X)
+
+        possible_colors = {'ligand', 'residue'}
+        assert color in possible_colors, f'Invalid color given. Choose one of {str(possible_colors)}'
+        color_vector = None
+        color_title = None
+        if color == 'ligand':
+            color_title = 'Ligand'
+            color_vector = self.bind_annotation.to_names()
+        elif color == 'residue':
+            color_title = 'Amino acid'
+            color_vector = self.sequence.to_list()
+
+        Plots.umap_2d(umap_proj_2d=umap_proj_2d,
+                      data_title=self.prot_id,
+                      color_title=color_title,
+                      color=pd.Series((v[0] for v in color_vector)),
+                      hover_data={'ligand': self.bind_annotation.to_names(),
+                                  'position': list(range(len(self))),
+                                  'residue': self.sequence.to_list()},
+                      n_neighbors_title=str(n_neighbors),
+                      subset_title=str(len(self)),
+                      write=write,
+                      show=True)
 
     def __len__(self):
         return len(self._sequence)
@@ -261,17 +353,26 @@ class Dataset(object):
         sequences = Sequence.read_fasta(files['sequences'])
         bind_annotations = BindAnnotation.parse_files(files['biolip_annotations'], sequences=sequences)
         embeddings = Embedding.parse_file(files['embeddings'])
-        distograms = Distogram.parse_files(files['distogram_dir'])
+        structures = ProteinStructure.parse_files(distogram_dir=files['distogram_dir'], pdb_dir=files['pdb_dir'])
 
         self._proteins: Dict[str, ProteinData] = dict()
         for prot_id in sequences.keys():
             self._proteins[prot_id] = ProteinData(prot_id=prot_id, sequence=sequences[prot_id],
                                                   bind_annotation=bind_annotations[prot_id],
                                                   embedding=embeddings[prot_id],
-                                                  distogram=distograms[prot_id])
+                                                  structure=structures[prot_id])
 
-    def get_proteins(self) -> Dict[str, ProteinData]:
+    @property
+    def proteins(self) -> Dict[str, ProteinData]:
         return self._proteins
+
+    @property
+    def prot_ids(self) -> list:
+        return self._prot_ids
+
+    @property
+    def fold_array(self) -> list:
+        return self._fold_array
 
     def determine_max_length(self):
         """Get maximum length in set of sequences"""
@@ -283,14 +384,6 @@ class Dataset(object):
                 max_len = len(proteins[i])
 
         return max_len
-
-    @property
-    def prot_ids(self) -> list:
-        return self._prot_ids
-
-    @property
-    def fold_array(self) -> list:
-        return self._fold_array
 
     def reduced_data(self, normalize: bool = False) -> (pd.DataFrame, np.array):
         """
@@ -318,37 +411,40 @@ class Dataset(object):
 
         return df, reduced_embeddings
 
-    def long_data(self) -> (pd.DataFrame, np.array, np.array, np.array):
+    def long_data(self) -> (pd.DataFrame, Dict[str, np.array]):
         """
         Combine all sequence info.
 
         :return:
         dataframe containing info for each residue in each protein,
-        np array (M, 1024) containing associated embeddings,
-        np array (M, 4) containing associated binding residue labels,
-        np array (M, 2 * L_MAX) containing distograms,
+
+        Dictionary containing the following tensors:
+
+        'embeddings' -> np array (M, 1024) containing associated embeddings,
+
+        'binding_annotations' -> np array (M, 4) containing associated binding residue labels,
+
+        'distograms' -> np array (M, 2 * L_MAX) containing distograms,
+
         where M are the total residues and L_MAX the maximum protein length in the dataset
         """
 
-        # sequences = self.__sequences
-        # embeddings = self.__embeddings
-        # distograms = self.__distograms
         proteins = self._proteins
 
         residues = []
-        label_strs = []
+        bind_annot_ids = []
         lengths = []
         positions = []
         protein_ids = []
-        label_tensors = []
+        plddts = []
+        bind_annot_tensors = []
         embedding_tensors = []
         distogram_tensors = []
         max_distogram_length = 0
         for key, protein in proteins.items():
-            distogram_tensor = protein.distogram.tensor
+            distogram_tensor_2d = protein.structure.distogram_tensor_2D()
             seq = protein.sequence
             bind_annot = protein.bind_annotation
-            distogram_tensor_2d = distogram_tensor.reshape(distogram_tensor.shape[0], -1)
             if distogram_tensor_2d.shape[0] != len(protein):
                 print(f'Distogram length is different for id: {key}. '
                       f'Seq length: {str(len(protein))}, Distogram length: {str(distogram_tensor_2d.shape[0])}. '
@@ -358,31 +454,40 @@ class Dataset(object):
             embedding_tensor = protein.embedding.tensor
             if embedding_tensor.shape[0] != len(protein):
                 print(f'Embedding length is different for id: {key}. '
-                      f'Seq length: {str(len(protein))}, Embedding length: {str(embedding_tensor.shape[0])}. Skipping...')
+                      f'Seq length: {str(len(protein))}, Embedding length: {str(embedding_tensor.shape[0])}. '
+                      f'Skipping...')
                 continue
 
             residues.extend(seq.to_list())
-            label_strs.extend(bind_annot.to_list())
+            bind_annot_ids.extend(bind_annot.to_ids())
             lengths.extend([len(protein)] * len(protein))
             positions.extend(list(range(len(protein))))
             protein_ids.extend([key] * len(protein))
-            label_tensors.append(bind_annot.tensor)
+            plddts.extend(protein.structure.plddt_tensor)
+            bind_annot_tensors.append(bind_annot.tensor)
             embedding_tensors.append(embedding_tensor)
             if distogram_tensor_2d.shape[1] > max_distogram_length:
                 max_distogram_length = distogram_tensor_2d.shape[1]
             distogram_tensors.append(distogram_tensor_2d)
 
-        label_names = list(map(lambda x: bind_annot.ids2name(x), label_strs))
+        bind_annot_names = list(map(lambda x: bind_annot.ids2name(x), bind_annot_ids))
 
-        df = pd.DataFrame(zip(positions, residues, lengths, protein_ids, label_strs, label_names),
-                          columns=['position', 'residue', 'protein_length', 'protein_id', 'label_id', 'label_name'])
-        label_tensors_array = np.concatenate(label_tensors)
-        embedding_tensors_array = np.concatenate(embedding_tensors)
+        df = pd.DataFrame(zip(positions, residues, lengths, protein_ids, bind_annot_ids, bind_annot_names, plddts),
+                          columns=['position', 'residue', 'protein_length', 'protein_id', 'bind_annot_id',
+                                   'bind_annot_name',
+                                   'plddt'])
+        bind_annot_tensors_merged = np.concatenate(bind_annot_tensors)
+        embedding_tensors_merged = np.concatenate(embedding_tensors)
         # pad distograms
         for i in range(len(distogram_tensors)):
             distogram_tensor = distogram_tensors[i]
             distogram_tensors[i] = np.pad(distogram_tensor,
                                           ([0, 0], [0, max_distogram_length - distogram_tensor.shape[1]]),
                                           mode='constant')
-        distogram_tensors_array = np.concatenate(distogram_tensors)
-        return df, embedding_tensors_array, label_tensors_array, distogram_tensors_array
+        distogram_tensors_merged = np.concatenate(distogram_tensors)
+        tensor_dict = {
+            'embeddings': embedding_tensors_merged,
+            'binding_annotations': bind_annot_tensors_merged,
+            'distograms': distogram_tensors_merged
+        }
+        return df, tensor_dict

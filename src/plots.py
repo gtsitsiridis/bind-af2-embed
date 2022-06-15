@@ -2,7 +2,13 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 from typing import Dict
-from umap import UMAP
+import py3Dmol
+import matplotlib.pyplot as plt
+
+BIND_ANNOT_COLORS = {'other': 'black',
+                     'metal': 'orange',
+                     'small': 'green',
+                     'nuclear': 'red'}
 
 
 class Plots(object):
@@ -55,95 +61,83 @@ class Plots(object):
             fig.write_image(
                 f'../plots/umap3d_{data_title.lower()}_t{subset_title}_n{n_neighbors_title}_{color_title.lower()}.png')
 
-def umap_plots_2d(X: np.array, long_df_head: pd.DataFrame, data_title: str, n_neighbors: int, n: int, show: bool,
-                  write: bool):
-    print(f'UMAP 2D: {data_title}-subset{str(n)}-neighbors{n_neighbors}')
-    umap_2d = UMAP(n_neighbors=n_neighbors, n_components=2, init='random', random_state=42, verbose=True)
-    umap_proj_2d = umap_2d.fit_transform(X)
-    np.save(f'../data/output/umap/umap2d_{data_title}_subset{str(n)}_neighbors{str(n_neighbors)}', umap_proj_2d)
+    @staticmethod
+    def show_pdb(pdb_file: str, color: str, bind_annot_names: list = None, show_sidechains: bool = False,
+                 show_mainchains: bool = False) -> py3Dmol.view:
+        with open(pdb_file, 'r') as f:
+            system = "".join([x for x in f])
+        view = py3Dmol.view(js='https://3dmol.org/build/3Dmol.js', )
+        view.addModel(system)
 
-    ## plot by amino acid
-    print('UMAP AA')
-    Plots.umap_2d(umap_proj_2d=umap_proj_2d,
-                  data_title=data_title,
-                  color_title='Amino acid',
-                  color=long_df_head.residue,
-                  hover_data={'protein ID': long_df_head.protein_id,
-                              'ligand': long_df_head.label_name},
-                  n_neighbors_title=str(n_neighbors),
-                  subset_title=str(n),
-                  write=write,
-                  show=show)
+        possible_colors = {'lDDT', 'rainbow', 'ligand'}
+        assert color in possible_colors, f'Invalid color given. Choose one of {str(possible_colors)}'
 
-    # plot by protein
-    print('UMAP Protein')
-    Plots.umap_2d(umap_proj_2d=umap_proj_2d,
-                  data_title=data_title,
-                  color_title='Protein',
-                  color=long_df_head.protein_id,
-                  hover_data={'Amino acid': long_df_head.residue,
-                              'ligand': long_df_head.label_name},
-                  n_neighbors_title=str(n_neighbors),
-                  subset_title=str(n),
-                  write=write,
-                  show=show)
+        if color == "lDDT":
+            view.setStyle({'cartoon': {'colorscheme': {'prop': 'b', 'gradient': 'roygb', 'min': 50, 'max': 90}}})
+        elif color == "rainbow":
+            view.setStyle({'cartoon': {'color': 'spectrum'}})
+        elif color == "ligand":
+            assert bind_annot_names is not None, 'bind_annot_ids should not be None if color="bind_annot"'
 
-    # plot by ligand
-    print('UMAP Ligand')
-    Plots.umap_2d(umap_proj_2d=umap_proj_2d,
-                  data_title=data_title,
-                  color_title='Ligand',
-                  color=long_df_head.label_name,
-                  hover_data={'Amino acid': long_df_head.residue,
-                              'Protein': long_df_head.protein_id},
-                  n_neighbors_title=str(n_neighbors),
-                  subset_title=str(n),
-                  write=write,
-                  show=show)
+            i = 0
+            for line in system.split("\n"):
+                split = line.split()
+                if len(split) == 0 or split[0] != "ATOM":
+                    continue
+                bind_annot = bind_annot_names[int(split[5]) - 1]
+                if bind_annot not in BIND_ANNOT_COLORS.keys():
+                    color = 'purple'
+                else:
+                    color = BIND_ANNOT_COLORS[bind_annot]
+                view.setStyle({'model': -1, 'serial': i + 1}, {"cartoon": {'color': color}})
+                i += 1
 
+        if show_sidechains:
+            BB = ['C', 'O', 'N']
+            view.addStyle({'and': [{'resn': ["GLY", "PRO"], 'invert': True}, {'atom': BB, 'invert': True}]},
+                          {'stick': {'colorscheme': f"WhiteCarbon", 'radius': 0.3}})
+            view.addStyle({'and': [{'resn': "GLY"}, {'atom': 'CA'}]},
+                          {'sphere': {'colorscheme': f"WhiteCarbon", 'radius': 0.3}})
+            view.addStyle({'and': [{'resn': "PRO"}, {'atom': ['C', 'O'], 'invert': True}]},
+                          {'stick': {'colorscheme': f"WhiteCarbon", 'radius': 0.3}})
+        if show_mainchains:
+            BB = ['C', 'O', 'N', 'CA']
+            view.addStyle({'atom': BB}, {'stick': {'colorscheme': f"WhiteCarbon", 'radius': 0.3}})
 
-def umap_plots_3d(X: np.array, long_df_head: pd.DataFrame, data_title: str, n_neighbors: int, n: int, show: bool,
-                  write: bool):
-    print(f'UMAP 3D: {data_title}-subset{str(n)}-neighbors{n_neighbors}')
-    umap_3d = UMAP(n_neighbors=n_neighbors, n_components=3, init='random', random_state=42, verbose=True)
-    umap_proj_3d = umap_3d.fit_transform(X)
-    np.save(f'../data/output/umap/umap3d_{data_title}_subset{str(n)}_neighbors{str(n_neighbors)}', umap_proj_3d)
+        view.zoomTo()
+        view.show()
+        return view
 
-    ## plot by amino acid
-    print('UMAP AA')
-    Plots.umap_3d(umap_proj_3d=umap_proj_3d,
-                  data_title=data_title,
-                  color_title='Amino acid',
-                  color=long_df_head.residue,
-                  hover_data={'protein ID': long_df_head.protein_id,
-                              'ligand': long_df_head.label_name},
-                  n_neighbors_title=str(n_neighbors),
-                  subset_title=str(n),
-                  write=write,
-                  show=show)
+    @staticmethod
+    def plot_plddt_legend(dpi=100):
+        thresh = ['plDDT:', 'Very low (<50)', 'Low (60)', 'OK (70)', 'Confident (80)', 'Very high (>90)']
+        plt.figure(figsize=(1, 0.1), dpi=dpi)
+        ########################################
+        for c in ["#FFFFFF", "#FF0000", "#FFFF00", "#00FF00", "#00FFFF", "#0000FF"]:
+            plt.bar(0, 0, color=c)
+        plt.legend(thresh, frameon=False,
+                   loc='center', ncol=6,
+                   handletextpad=1,
+                   columnspacing=1,
+                   markerscale=0.5, )
+        plt.axis(False)
+        return plt
 
-    # plot by protein
-    print('UMAP Protein')
-    Plots.umap_3d(umap_proj_3d=umap_proj_3d,
-                  data_title=data_title,
-                  color_title='Protein',
-                  color=long_df_head.protein_id,
-                  hover_data={'Amino acid': long_df_head.residue,
-                              'ligand': long_df_head.label_name},
-                  n_neighbors_title=str(n_neighbors),
-                  subset_title=str(n),
-                  write=write,
-                  show=show)
-
-    # plot by ligand
-    print('UMAP Ligand')
-    Plots.umap_3d(umap_proj_3d=umap_proj_3d,
-                  data_title=data_title,
-                  color_title='Ligand',
-                  color=long_df_head.label_name,
-                  hover_data={'Amino acid': long_df_head.residue,
-                              'Protein': long_df_head.protein_id},
-                  n_neighbors_title=str(n_neighbors),
-                  subset_title=str(n),
-                  write=write,
-                  show=show)
+    @staticmethod
+    def plot_ligand_legend(dpi=100):
+        ligands = []
+        colors = []
+        for ligand, color in BIND_ANNOT_COLORS.items():
+            ligands.append(ligand)
+            colors.append(color)
+        plt.figure(figsize=(1, 0.1), dpi=dpi)
+        ########################################
+        for c in ["#FFFFFF"] + colors:
+            plt.bar(0, 0, color=c)
+        plt.legend(['ligand:'] + ligands, frameon=False,
+                   loc='center', ncol=len(ligands) + 1,
+                   handletextpad=1,
+                   columnspacing=1,
+                   markerscale=0.5, )
+        plt.axis(False)
+        return plt

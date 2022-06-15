@@ -2,6 +2,7 @@
   "files": {
     "embeddings": "../data/input/bindembed_embeddings.h5",
     "distogram_dir": "../data/input/af2/dist_maps_af2",
+    "pdb_dir": "../data/input/af2/pdb_structures",
     "sequences": "../data/input/sequences.fasta",
     "biolip_annotations": {
       "small": "../data/input/biolip/binding_residues_2.5_small.txt",
