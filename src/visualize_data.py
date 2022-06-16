@@ -3,6 +3,10 @@ from plots import Plots
 import pandas as pd
 from umap import UMAP
 
+"""
+This file includes methods that accompany the notebooks.
+"""
+
 
 def umap_plots_2d(X: np.array, long_df_head: pd.DataFrame, data_title: str, n_neighbors: int, n: int, show: bool,
                   write: bool):
