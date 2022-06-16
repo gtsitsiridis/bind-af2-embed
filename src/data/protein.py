@@ -7,6 +7,9 @@ from umap import UMAP
 from data.annotation import Sequence, BindAnnotation
 from data.structure import ProteinStructure
 from data.embedding import Embedding
+from logging import getLogger
+
+logger = getLogger('app')
 
 
 class Protein(object):

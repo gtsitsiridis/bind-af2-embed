@@ -1,9 +1,15 @@
 from data.dataset import Dataset
 from config import AppConfig
+from utils import Logging
+from logging import getLogger
+
+logger = getLogger('app')
 
 
 def __main():
-    dataset = Dataset(AppConfig())
+    config = AppConfig()
+    Logging.setup_app_logger(config=config, write=True)
+    dataset = Dataset(config)
     i = 0
     # for prot_id, protein in dataset.proteins.items():
     #     i += 1

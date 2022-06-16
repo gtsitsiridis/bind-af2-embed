@@ -8,3 +8,6 @@ class AppConfig(object):
 
     def get_files(self) -> dict:
         return self.config['files']
+
+    def get_log(self) -> dict:
+        return self.config['log']

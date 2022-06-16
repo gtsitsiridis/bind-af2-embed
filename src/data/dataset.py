@@ -3,16 +3,19 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 from typing import Dict
-from utils import FileManager
+from utils import FileUtils
 from config import AppConfig
 from data.protein import Protein, ProteinStructure, BindAnnotation, Sequence, Embedding
+from logging import getLogger
+
+logger = getLogger('app')
 
 
 class Dataset(object):
 
     def __init__(self, config: AppConfig):
         files = config.get_files()
-        self._prot_ids, self._fold_array = FileManager.read_split_ids(files['splits'])
+        self._prot_ids, self._fold_array = FileUtils.read_split_ids(files['splits'])
         sequences = Sequence.read_fasta(files['sequences'])
         bind_annotations = BindAnnotation.parse_files(files['biolip_annotations'], sequences=sequences)
         embeddings = Embedding.parse_file(files['embeddings'])
@@ -109,16 +112,16 @@ class Dataset(object):
             seq = protein.sequence
             bind_annot = protein.bind_annotation
             if distogram_tensor_2d.shape[0] != len(protein):
-                print(f'Distogram length is different for id: {key}. '
-                      f'Seq length: {str(len(protein))}, Distogram length: {str(distogram_tensor_2d.shape[0])}. '
-                      f'Skipping...')
+                logger.info(f'Distogram length is different for id: {key}. '
+                            f'Seq length: {str(len(protein))}, Distogram length: {str(distogram_tensor_2d.shape[0])}. '
+                            f'Skipping...')
                 continue
 
             embedding_tensor = protein.embedding.tensor
             if embedding_tensor.shape[0] != len(protein):
-                print(f'Embedding length is different for id: {key}. '
-                      f'Seq length: {str(len(protein))}, Embedding length: {str(embedding_tensor.shape[0])}. '
-                      f'Skipping...')
+                logger.info(f'Embedding length is different for id: {key}. '
+                            f'Seq length: {str(len(protein))}, Embedding length: {str(embedding_tensor.shape[0])}. '
+                            f'Skipping...')
                 continue
 
             residues.extend(seq.to_list())

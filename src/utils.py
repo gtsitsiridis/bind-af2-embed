@@ -1,4 +1,12 @@
-class FileManager(object):
+import logging
+from config import AppConfig
+from pathlib import Path
+from logging import getLogger
+
+logger = getLogger('app')
+
+
+class FileUtils(object):
     @staticmethod
     def read_ids(ids_file) -> list:
         ids = []
@@ -18,7 +26,7 @@ class FileManager(object):
         fold_array = []
         s = 1
         for ids_file in splits_ids_files:
-            split_ids = FileManager.read_ids(ids_file)
+            split_ids = FileUtils.read_ids(ids_file)
             ids += split_ids
             fold_array += [s] * len(split_ids)
             s += 1
@@ -44,3 +52,27 @@ class FileManager(object):
                     binding[identifier] = residues_int
 
         return binding
+
+
+class Logging(object):
+    @staticmethod
+    def setup_app_logger(config: AppConfig, write: bool = False):
+        log_config = config.get_log()
+        assert log_config['loggers']['app']['level'], 'level has not been defined in the app logger configuration'
+
+        level = log_config['loggers']['app']['level']
+
+        logger = logging.getLogger('app')
+        logger.setLevel(level)
+        formatter = logging.Formatter(fmt='%(asctime)s - %(levelname)s - %(module)s - %(message)s')
+
+        consoleHandler = logging.StreamHandler()
+        consoleHandler.setFormatter(formatter)
+        logger.addHandler(consoleHandler)
+
+        if write:
+            assert log_config['path'], 'path has not been defined in the log configuration'
+            file_path = Path(log_config['path']) / 'app.log'
+            fileHandler = logging.FileHandler(file_path)
+            fileHandler.setFormatter(formatter)
+            logger.addHandler(fileHandler)

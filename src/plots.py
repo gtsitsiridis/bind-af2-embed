@@ -4,7 +4,9 @@ import plotly.express as px
 from typing import Dict
 import py3Dmol
 import matplotlib.pyplot as plt
+from logging import getLogger
 
+logger = getLogger('app')
 BIND_ANNOT_COLORS = {'other': 'black',
                      'metal': 'orange',
                      'small': 'green',

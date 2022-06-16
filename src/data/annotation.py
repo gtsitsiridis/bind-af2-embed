@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import numpy as np
 from typing import Dict
-from utils import FileManager
+from utils import FileUtils
+from logging import getLogger
+
+logger = getLogger('app')
 
 
 class Sequence(object):
@@ -91,9 +94,9 @@ class BindAnnotation(object):
         :return:
         """
 
-        metal_residues = FileManager.read_binding_residues(binding_residues_file_dict["metal"])
-        nuclear_residues = FileManager.read_binding_residues(binding_residues_file_dict["nuclear"])
-        small_residues = FileManager.read_binding_residues(binding_residues_file_dict["small"])
+        metal_residues = FileUtils.read_binding_residues(binding_residues_file_dict["metal"])
+        nuclear_residues = FileUtils.read_binding_residues(binding_residues_file_dict["nuclear"])
+        small_residues = FileUtils.read_binding_residues(binding_residues_file_dict["small"])
 
         bind_annotations: Dict[str, BindAnnotation] = dict()
         for prot_id, sequence in sequences.items():

@@ -3,6 +3,9 @@ from __future__ import annotations
 import numpy as np
 from typing import Dict
 from pathlib import Path
+from logging import getLogger
+
+logger = getLogger('app')
 
 
 class ProteinStructure(object):
