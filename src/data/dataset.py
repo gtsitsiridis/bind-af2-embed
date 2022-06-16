@@ -5,7 +5,7 @@ import pandas as pd
 from typing import Dict
 from utils import FileManager
 from config import AppConfig
-from data.protein import Protein, ProteinStructure, Sequence, BindAnnotation, Embedding
+from data.protein import Protein, ProteinStructure, BindAnnotation, Sequence, Embedding
 
 
 class Dataset(object):
