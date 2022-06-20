@@ -41,6 +41,9 @@ class Protein(object):
     def structure(self) -> ProteinStructure:
         return self._structure
 
+    def to_feature_tensor(self) -> np.array:
+        return np.concatenate([self.embedding.tensor, self.structure.distogram_tensor_2D()], axis=1)
+
     def show_structure(self, show_mainchains: bool = False, show_sidechains: bool = False, color='lDDT'):
         Plots.show_pdb(pdb_file=self.structure.pdb_file, show_mainchains=show_mainchains,
                        bind_annot_names=self.bind_annotation.to_names(),

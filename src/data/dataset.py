@@ -13,20 +13,60 @@ logger = getLogger('app')
 
 class Dataset(object):
 
-    def __init__(self, config: AppConfig):
-        files = config.get_files()
-        self._prot_ids, self._fold_array = FileUtils.read_split_ids(files['splits'])
+    def __init__(self, config: AppConfig, mode: str = 'all'):
+        """
+        This object contains a dictionary of all protein objects and useful methods to manipulate them.
+        :param config:
+        :param mode: one of ["train", "all", "test"]
+        """
+        files = config.get_input()
+
+        assert mode in {'train', 'test', 'all'}, 'mode should be one of ["train", "all", "test"]'
+
+        logger.info(f"Reading {mode} data")
+
+        split_ids_files: list
+        if mode in {'train', 'test'}:
+            split_ids_files = files['splits'][mode]
+        else:
+            split_ids_files = files['splits']['train'] + files['splits']['test']
+
+        logger.info("reading splits")
+        self._prot_ids, self._fold_array = FileUtils.read_split_ids(split_ids_files)
+        self.embedding_size = config.get_embedding_size()
+
+        logger.info("reading protein data")
         sequences = Sequence.read_fasta(files['sequences'])
         bind_annotations = BindAnnotation.parse_files(files['biolip_annotations'], sequences=sequences)
         embeddings = Embedding.parse_file(files['embeddings'])
         structures = ProteinStructure.parse_files(distogram_dir=files['distogram_dir'], pdb_dir=files['pdb_dir'])
 
         self._proteins: Dict[str, Protein] = dict()
-        for prot_id in sequences.keys():
-            self._proteins[prot_id] = Protein(prot_id=prot_id, sequence=sequences[prot_id],
-                                              bind_annotation=bind_annotations[prot_id],
-                                              embedding=embeddings[prot_id],
-                                              structure=structures[prot_id])
+        to_remove = []
+        for prot_id in self._prot_ids:
+            seq = sequences[prot_id]
+            structure = structures[prot_id]
+            bind_annot = bind_annotations[prot_id]
+            embed = embeddings[prot_id]
+            if structure.distogram_tensor.shape[0] != len(seq):
+                logger.warning(f'Distogram length is different for id: {prot_id}. '
+                               f'Seq length: {str(len(seq))}, '
+                               f'Distogram length: {str(structure.distogram_tensor.shape[0])}. '
+                               f'Skipping...')
+                to_remove.append(prot_id)
+                continue
+
+            self._proteins[prot_id] = Protein(prot_id=prot_id, sequence=seq,
+                                              bind_annotation=bind_annot,
+                                              embedding=embed,
+                                              structure=structure)
+        for val in to_remove:
+            self.prot_ids.remove(val)
+
+        assert len(self._prot_ids) == len(self.proteins), 'Something went wrong. We should not be here.'
+
+    def __len__(self):
+        return len(self.proteins)
 
     @property
     def proteins(self) -> Dict[str, Protein]:
@@ -51,6 +91,34 @@ class Dataset(object):
 
         return max_len
 
+    def to_feature_tensor_dict(self) -> Dict[str, np.array]:
+        feature_dict: Dict[str, np.array] = dict()
+        max_length = self.determine_max_length()
+        embedding_size = self.embedding_size
+
+        # pad features based on max_length
+        for prot_id, protein in self.proteins.items():
+            tensor = protein.to_feature_tensor()
+            feature_dict[prot_id] = np.pad(tensor,
+                                           ([0, 0], [0, 2 * max_length + embedding_size - tensor.shape[1]]),
+                                           mode='constant')
+
+        return feature_dict
+
+    def to_bind_annot_tensor_dict(self) -> Dict[str, np.array]:
+        bind_annot_dict: Dict[str, np.array] = dict()
+        for prot_id, protein in self.proteins.items():
+            bind_annot_dict[prot_id] = protein.bind_annotation.tensor
+
+        return bind_annot_dict
+
+    def to_sequence_str_dict(self) -> Dict[str, str]:
+        seq_dict: Dict[str, str] = dict()
+        for prot_id, protein in self.proteins.items():
+            seq_dict[prot_id] = str(protein.sequence)
+
+        return seq_dict
+
     def reduced_data(self, normalize: bool = False) -> (pd.DataFrame, np.array):
         """
         Reduces the dataset to protein level labels and embeddings by computing the mean values of their residues.
@@ -61,19 +129,27 @@ class Dataset(object):
         reduced_embeddings = []
         reduced_labels = []
         keys = []
+        prot_lengths = []
         for key, protein in self._proteins.items():
             embedding = protein.embedding
             reduced_embeddings.append(embedding.reduce())
             keys.append(key)
             bind_annot = protein.bind_annotation
             reduced_labels.append(bind_annot.reduce(normalize=normalize))
+            prot_lengths.append(len(protein))
 
         # reduced df
         df = pd.DataFrame(index=keys)
         df[BindAnnotation.names()] = reduced_labels
+        df['protein_length'] = prot_lengths
         df[list(map(lambda x: f'{x}_one', BindAnnotation.names()))] = list(map(lambda x: x > 0, reduced_labels))
         df['label'] = list(map(lambda x: int(np.argmax(x[0:3])), reduced_labels))
         df.label = df.label.apply(lambda label_id: BindAnnotation.id2name(label_id))
+
+        if normalize:
+            df['other'] = df.apply(lambda x: 1 - x['nuclear'] - x['metal'] - x['small'], axis=1)
+        else:
+            df['other'] = df.apply(lambda x: x['protein_length'] - x['nuclear'] - x['metal'] - x['small'], axis=1)
 
         return df, reduced_embeddings
 
