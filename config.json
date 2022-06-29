@@ -26,13 +26,19 @@
     "path": "../logs/",
     "loggers": {
       "app": {
-        "level": "INFO"
+        "level": "DEBUG"
       }
     }
   },
   "ml": {
     "output_dir": "../data/output/ml/",
-    "types": {
+    "train_params": {
+      "early_stopping": false,
+      "early_stopping_patience": 10,
+      "batch_size": 406,
+      "epochs": 10
+    },
+    "methods": {
       "CNN1D": {
         "params": {
           "features": 128,
@@ -49,6 +55,5 @@
         }
       }
     }
-  },
-  "embedding_size": 1024
+  }
 }

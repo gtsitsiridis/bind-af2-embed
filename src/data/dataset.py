@@ -7,16 +7,19 @@ from utils import FileUtils
 from config import AppConfig
 from data.protein import Protein, ProteinStructure, BindAnnotation, Sequence, Embedding
 from logging import getLogger
+from random import sample
 
 logger = getLogger('app')
 
 
 class Dataset(object):
 
-    def __init__(self, config: AppConfig, mode: str = 'all'):
+    def __init__(self, config: AppConfig, mode: str = 'all', subset: int = -1):
         """
         This object contains a dictionary of all protein objects and useful methods to manipulate them.
         :param config:
+        :param subset: How many random proteins to include in the dataset.
+        If subset = -1 then all the proteins are included.
         :param mode: one of ["train", "all", "test"]
         """
         files = config.get_input()
@@ -32,14 +35,14 @@ class Dataset(object):
             split_ids_files = files['splits']['train'] + files['splits']['test']
 
         logger.info("reading splits")
-        self._prot_ids, self._fold_array = FileUtils.read_split_ids(split_ids_files)
-        self.embedding_size = config.get_embedding_size()
+        self._prot_ids, self._fold_array = FileUtils.read_split_ids(split_ids_files, subset=subset)
 
         logger.info("reading protein data")
         sequences = Sequence.read_fasta(files['sequences'])
         bind_annotations = BindAnnotation.parse_files(files['biolip_annotations'], sequences=sequences)
         embeddings = Embedding.parse_file(files['embeddings'])
         structures = ProteinStructure.parse_files(distogram_dir=files['distogram_dir'], pdb_dir=files['pdb_dir'])
+        self._embedding_size = list(embeddings.values())[0].tensor.shape[1]
 
         self._proteins: Dict[str, Protein] = dict()
         to_remove = []
@@ -61,9 +64,13 @@ class Dataset(object):
                                               embedding=embed,
                                               structure=structure)
         for val in to_remove:
-            self.prot_ids.remove(val)
+            idx = self._prot_ids.index(val)
+            del self.prot_ids[idx]
+            del self.fold_array[idx]
 
         assert len(self._prot_ids) == len(self.proteins), 'Something went wrong. We should not be here.'
+
+        logger.info("Number of proteins: " + str(len(self)))
 
     def __len__(self):
         return len(self.proteins)
@@ -80,6 +87,10 @@ class Dataset(object):
     def fold_array(self) -> list:
         return self._fold_array
 
+    @property
+    def embedding_size(self) -> int:
+        return self._embedding_size
+
     def determine_max_length(self):
         """Get maximum length in set of sequences"""
         _prot_ids = self._prot_ids
@@ -94,7 +105,7 @@ class Dataset(object):
     def to_feature_tensor_dict(self) -> Dict[str, np.array]:
         feature_dict: Dict[str, np.array] = dict()
         max_length = self.determine_max_length()
-        embedding_size = self.embedding_size
+        embedding_size = self._embedding_size
 
         # pad features based on max_length
         for prot_id, protein in self.proteins.items():

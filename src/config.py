@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 
 class AppConfig(object):
@@ -12,8 +13,14 @@ class AppConfig(object):
     def get_log(self) -> dict:
         return self.config['log']
 
-    def get_embedding_size(self) -> int:
-        return self.config['embedding_size']
-
     def get_ml(self) -> dict:
         return self.config['ml']
+
+    def get_ml_model_path(self) -> Path:
+        return Path(self.get_ml()['output_dir']) / 'models'
+
+    def get_ml_stats_path(self) -> Path:
+        return Path(self.get_ml()['output_dir']) / 'stats'
+
+    def get_ml_train_params(self) -> dict:
+        return self.get_ml()["train_params"]

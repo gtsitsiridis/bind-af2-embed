@@ -118,70 +118,6 @@ class ModelPerformance(object):
         return mean, ci
 
 
-class PerformanceEpoch(object):
-    def __init__(self, name: str):
-        self.name = name
-
-        self.loss = 0
-        self.loss_count = 0
-        self.tp = 0
-        self.tn = 0
-        self.fp = 0
-        self.fn = 0
-        self.acc = 0
-        self.prec = 0
-        self.rec = 0
-        self.f1 = 0
-        self.mcc = 0
-
-        self.sigm = torch.nn.Sigmoid()
-
-    def add_batch(self, feature_batch: np.array, pred_batch: np.array, target_batch: np.array):
-        for idx, feature in enumerate(feature_batch):
-            # remove padded positions to calculate tp, fp, tn, fn
-            pred, target = self._remove_padded_positions(pred_batch[idx], target_batch[idx], feature)
-            pred = self.sigm(pred)
-            tp, fp, tn, fn = PerformanceAssessment.evaluate_per_residue_torch(pred, target)
-            acc, prec, rec, f1, mcc = PerformanceAssessment.calc_performance_measurements(tp, fp, tn, fn)
-            self.tp += tp
-            self.fp += fp
-            self.tn += tn
-            self.fn += fn
-
-            self.acc += acc
-            self.prec += prec
-            self.rec += rec
-            self.f1 += f1
-            self.mcc += mcc
-
-    def normalize(self):
-        self.loss = self.loss / (self.loss_count * 3)
-
-        self.acc /= self.loss_count
-        self.prec /= self.loss_count
-        self.rec /= self.loss_count
-        self.f1 /= self.loss_count
-        self.mcc /= self.loss_count
-
-    def __str__(self):
-        return self.name + \
-               " loss: {:.3f}, Prec: {:.3f}, Recall: {:.3f}, F1: {:.3f}, MCC: {:.3f}".format(self.loss,
-                                                                                             self.prec,
-                                                                                             self.rec,
-                                                                                             self.f1,
-                                                                                             self.mcc) + \
-               "\n" + 'TP: {}, FP: {}, TN: {}, FN: {}'.format(self.tp, self.fp, self.tn, self.fn)
-
-    @staticmethod
-    def _remove_padded_positions(pred, target, feature):
-        indices = (feature[feature.shape[0] - 1, :] != 0).nonzero()
-
-        pred_i = pred[:, indices].squeeze()
-        target_i = target[:, indices].squeeze()
-
-        return pred_i, target_i
-
-
 class PerformanceAssessment(object):
 
     @staticmethod
@@ -194,10 +130,10 @@ class PerformanceAssessment(object):
         target = torch.sum(torch.ge(target, 0.5), 1)
 
         # get confusion matrix
-        tp = torch.sum(torch.ge(prediction, 0.5) * torch.ge(target, 0.5))
-        tn = torch.sum(torch.lt(prediction, 0.5) * torch.lt(target, 0.5))
-        fp = torch.sum(torch.ge(prediction, 0.5) * torch.lt(target, 0.5))
-        fn = torch.sum(torch.lt(prediction, 0.5) * torch.ge(target, 0.5))
+        tp = torch.sum(torch.ge(prediction, 0.5) * torch.ge(target, 0.5)).item()
+        tn = torch.sum(torch.lt(prediction, 0.5) * torch.lt(target, 0.5)).item()
+        fp = torch.sum(torch.ge(prediction, 0.5) * torch.lt(target, 0.5)).item()
+        fn = torch.sum(torch.lt(prediction, 0.5) * torch.ge(target, 0.5)).item()
 
         return tp, fp, tn, fn
 
