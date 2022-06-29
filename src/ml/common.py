@@ -233,7 +233,7 @@ class TrainEpoch(object):
 
 class TrainPerformance(object):
     def __init__(self):
-        self.train_metrics: List[dict] = []
+        self.train_metrics: List[TrainEpoch] = []
         self.validate_metrics: List[TrainEpoch] = []
 
     def add_epoch_performance(self, train_epoch: TrainEpoch, validate_epoch: TrainEpoch):
