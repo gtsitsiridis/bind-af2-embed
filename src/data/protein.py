@@ -78,7 +78,7 @@ class Protein(object):
         Plots.umap_2d(umap_proj_2d=umap_proj_2d,
                       data_title=self.prot_id,
                       color_title=color_title,
-                      color=pd.Series((v[0] for v in color_vector)),
+                      color=pd.Series((v for v in color_vector)),
                       hover_data={'ligand': self.bind_annotation.to_names(),
                                   'position': list(range(len(self))),
                                   'residue': self.sequence.to_list()},
