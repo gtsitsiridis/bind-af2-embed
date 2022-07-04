@@ -9,7 +9,7 @@ import torch
 import numpy as np
 from ml.method import Method
 from logging import getLogger
-from ml.common import Performance, EarlyStopping, General, Results, ProteinResult
+from ml.common import PerformanceMap, EarlyStopping, General, Results, ProteinResult
 from ml.summary_writer import MySummaryWriter
 import random
 from pathlib import Path
@@ -23,6 +23,7 @@ class MLTrainer(object):
                  train_writer: MySummaryWriter = None,
                  val_writer: MySummaryWriter = None,
                  performance_file_path: Path = None,
+                 results_file_path: Path = None,
                  model_file_path: Path = None):
         if torch.cuda.is_available():
             self._device = 'cuda:0'
@@ -36,6 +37,7 @@ class MLTrainer(object):
         self._val_writer = val_writer
         self._performance_file_path = performance_file_path
         self._model_file_path = model_file_path
+        self._results_file_path = results_file_path
 
     def __call__(self, train_ids: list, validation_ids: list) -> (Results, Results):
         """
@@ -63,7 +65,7 @@ class MLTrainer(object):
                                                    worker_init_fn=MyWorkerInit())
         validation_loader = torch.utils.data.DataLoader(validation_set, batch_size=batch_size, shuffle=True,
                                                         pin_memory=True, worker_init_fn=MyWorkerInit())
-        performance = Performance(cutoff=params['cutoff'])
+        performance_map = PerformanceMap(cutoff=params['cutoff'])
         train_results = None
         validation_results = None
         for epoch_id in range(epochs):
@@ -74,23 +76,28 @@ class MLTrainer(object):
                                                       epoch_id=epoch_id, log_model=(epoch_id == 0))
 
             # get performance
-            epoch_train_performance = train_results.get_single_performance(cutoff=params['cutoff'])
-            epoch_validation_performance = validation_results.get_single_performance(cutoff=params['cutoff'])
+            epoch_train_performance = train_results.get_performance(cutoff=params['cutoff'])
+            epoch_validation_performance = validation_results.get_performance(cutoff=params['cutoff'])
 
-            performance.append_single_performance(single_performance=epoch_train_performance,
-                                                  tag=f'train_epoch_{str(epoch_id)}')
-            performance.append_single_performance(single_performance=epoch_validation_performance,
-                                                  tag=f'val_epoch_{str(epoch_id)}')
+            performance_map.append_performance(performance=epoch_train_performance,
+                                               tag=f'train_epoch_{str(epoch_id)}')
+            performance_map.append_performance(performance=epoch_validation_performance,
+                                               tag=f'val_epoch_{str(epoch_id)}')
 
             # log performance
             logger.debug("Training performance: " + str(epoch_train_performance))
             logger.debug("Validation performance: " + str(epoch_validation_performance))
             if train_writer is not None:
-                train_writer.add_single_performance(performance=epoch_train_performance,
-                                                    epoch_id=epoch_id)
+                train_writer.add_performance(performance=epoch_train_performance,
+                                             epoch_id=epoch_id)
+                if epoch_id % 10 == 0:
+                    train_writer.add_protein_results(train_results, cutoff=params['cutoff'], epoch=epoch_id)
+
             if val_writer is not None:
-                val_writer.add_single_performance(performance=epoch_validation_performance,
-                                                  epoch_id=epoch_id)
+                val_writer.add_performance(performance=epoch_validation_performance,
+                                           epoch_id=epoch_id)
+                if epoch_id % 10 == 0:
+                    val_writer.add_protein_results(validation_results, cutoff=params['cutoff'], epoch=epoch_id)
 
             # stop training if F1 score doesn't improve anymore
             if early_stopping is not None:
@@ -107,8 +114,12 @@ class MLTrainer(object):
             torch.save(method.model, self._model_file_path)
 
         if self._performance_file_path is not None:
-            General.to_csv(df=performance.to_df(),
+            General.to_csv(df=performance_map.to_df(),
                            filename=self._performance_file_path)
+        if self._results_file_path is not None:
+            General.to_csv(df=validation_results.to_df(cutoff=params['cutoff']),
+                           filename=self._results_file_path)
+
         return train_results, validation_results
 
     def _train_epoch(self, loader: torch.utils.data.DataLoader,

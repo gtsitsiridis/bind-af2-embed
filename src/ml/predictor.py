@@ -7,6 +7,7 @@ from logging import getLogger
 from ml.common import General
 from ml.summary_writer import MySummaryWriter
 from ml.common import Results, ProteinResult
+from pathlib import Path
 
 logger = getLogger('app')
 
@@ -14,7 +15,8 @@ logger = getLogger('app')
 class MLPredictor(object):
 
     def __init__(self, dataset: Dataset, method: Method, params: dict, tag: str,
-                 writer: MySummaryWriter = None):
+                 writer: MySummaryWriter = None,
+                 results_file_path: Path = None):
         if torch.cuda.is_available():
             self.device = 'cuda:0'
         else:
@@ -25,6 +27,7 @@ class MLPredictor(object):
         self._writer = writer
         self._params = params
         self._tag = tag
+        self._results_file_path = results_file_path
 
     def __call__(self, ids: list) -> Results:
         validation_set = self._method.get_dataset(ids=ids)
@@ -58,11 +61,12 @@ class MLPredictor(object):
                                      tag=self._tag)
                 results[prot.prot_id] = prot
 
-        # log protein results
+        # log protein results and performance
         writer.add_protein_results(protein_results=results,
                                    cutoff=params['cutoff'])
-        # log performance
-        performance = results.get_single_performance(cutoff=params['cutoff'])
-        writer.add_single_performance(performance=performance)
-
+        performance = results.get_performance(cutoff=params['cutoff'])
+        writer.add_performance(performance=performance)
+        if self._results_file_path is not None:
+            General.to_csv(df=results.to_df(cutoff=params['cutoff']),
+                           filename=self._results_file_path)
         return results

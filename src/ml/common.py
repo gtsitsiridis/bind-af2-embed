@@ -211,7 +211,7 @@ class Results(object):
                                   list(self.results_dict.values()))),
                          axis=0)
 
-    def get_single_performance(self, cutoff: float, tag_value: str = None) -> SinglePerformance:
+    def get_performance(self, cutoff: float, tag_value: str = None) -> Performance:
         metrics = {}
         df = self.to_df(cutoff=cutoff)
 
@@ -232,7 +232,7 @@ class Results(object):
         metrics['acc_total'], metrics['prec_total'], metrics['rec_total'], metrics['f1_total'], metrics['mcc_total'] = \
             self.calc_performance_measurements(df=df)
 
-        return SinglePerformance(metrics=metrics)
+        return Performance(metrics=metrics)
 
     @staticmethod
     def calc_performance_measurements(df: pd.DataFrame):
@@ -269,7 +269,7 @@ class Results(object):
         return acc, prec, recall, f1, mcc
 
 
-class SinglePerformance(object):
+class Performance(object):
     def __init__(self, metrics: dict):
         self._metrics = metrics
 
@@ -287,23 +287,23 @@ class SinglePerformance(object):
                                                                                             self["mcc_total"])
 
 
-class Performance(object):
+class PerformanceMap(object):
     def __init__(self, cutoff: float):
         self._cutoff = cutoff
         self._metrics = {'tag': []}
 
-    def get_single_performance(self, idx: int) -> SinglePerformance:
+    def get_performance(self, idx: int) -> Performance:
         assert 0 <= idx < len(self), 'idx is out of range'
-        return SinglePerformance({k: v[idx] for k, v in self._metrics.items()})
+        return Performance({k: v[idx] for k, v in self._metrics.items()})
 
-    def append_single_performance(self, single_performance: SinglePerformance, tag: str):
+    def append_performance(self, performance: Performance, tag: str):
         metrics = self._metrics
         metrics['tag'].append(tag)
-        for k in single_performance.keys():
+        for k in performance.keys():
             if k not in self._metrics:
-                metrics[k] = [single_performance[k]]
+                metrics[k] = [performance[k]]
             else:
-                metrics[k].append(single_performance[k])
+                metrics[k].append(performance[k])
 
     def keys(self):
         return self._metrics.keys()

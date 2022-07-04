@@ -9,14 +9,27 @@ from ml.predictor import MLPredictor
 from sklearn.model_selection import PredefinedSplit
 from ml.method import Method, CNN1DAllMethod, CNN1DEmbeddingsMethod, MethodName
 from ml.summary_writer import MySummaryWriter
-from ml.predictor import Results
 import tracemalloc
-from ml.common import General
+from ml.common import General, PerformanceMap, Results, Performance
+from pathlib import Path
 
 logger = getLogger('app')
 
 
+def log_results_performance(writer: MySummaryWriter, results: Results, cutoff: float, performance: Performance,
+                            performance_map: PerformanceMap, results_path: Path, performance_path: Path):
+    # log results and performance
+    writer.add_protein_results(results, cutoff=cutoff)
+    writer.add_performance(performance)
+    # save results into csv
+    General.to_csv(df=results.to_df(cutoff=cutoff),
+                   filename=results_path)
+    General.to_csv(df=performance_map.to_df(),
+                   filename=performance_path)
+
+
 class Pipeline(object):
+
     @staticmethod
     def cross_training(config: AppConfig, method_name: MethodName, tag: str) -> Results:
         log_tracemalloc = 'tracemalloc' in config.get_log() and config.get_log()['tracemalloc']
@@ -46,7 +59,8 @@ class Pipeline(object):
 
         # Start training
         logger.info("Start training")
-        results = Results()
+        validation_results = Results()
+        validation_performance_map = PerformanceMap(cutoff=params['cutoff'])
         for train_index, validation_index in ps.split():
             # Prepare trainer
             logger.info("Prepare trainer")
@@ -57,10 +71,11 @@ class Pipeline(object):
                 output_dir=stats_dir / 'train_set' / 'predict' / f'split_{str(split_counter)}')
             performance_file_path = model_dir / f'model_{str(split_counter)}_perf.csv'
             model_file_path = model_dir / f'model_{str(split_counter)}.pt'
+            results_file_path = predictions_dir / f'validation_{str(split_counter)}.csv'
 
             trainer = MLTrainer(dataset=dataset, method=method, params=params, train_writer=train_writer,
                                 val_writer=validation_writer, model_file_path=model_file_path,
-                                performance_file_path=performance_file_path)
+                                performance_file_path=performance_file_path, results_file_path=results_file_path)
 
             # Prepare split run
             train_ids = [prot_ids[train_idx] for train_idx in train_index]
@@ -68,8 +83,11 @@ class Pipeline(object):
 
             # train model
             logger.info("Train model")
-            _, validation_results = trainer(train_ids=train_ids, validation_ids=validation_ids)
-            results.merge(validation_results)
+            _, validation_results_i = trainer(train_ids=train_ids, validation_ids=validation_ids)
+            validation_results.merge(validation_results_i)
+            validation_performance_map.append_performance(
+                validation_results_i.get_performance(cutoff=params['cutoff']),
+                tag=f'model_{str(split_counter)}')
 
             if log_tracemalloc:
                 snapshot2 = tracemalloc.take_snapshot()
@@ -79,13 +97,16 @@ class Pipeline(object):
                     mem_stats += str(stat) + "\n"
                 logger.warning(mem_stats)
 
+        total_validation_performance = validation_results.get_performance(cutoff=params['cutoff'])
+        validation_performance_map.append_performance(total_validation_performance, tag=f'model_total')
+
         # log results and performance
-        total_predict_writer = MySummaryWriter(output_dir=stats_dir / 'train_set' / 'predict' / 'total')
-        total_predict_writer.add_protein_results(results, cutoff=params['cutoff'])
-        total_predict_writer.add_single_performance(results.get_single_performance(cutoff=params['cutoff']))
-        # save results into csv
-        General.to_csv(df=results.to_df(cutoff=params['cutoff']), filename=predictions_dir / f'train_total.csv')
-        return results
+        total_writer = MySummaryWriter(output_dir=stats_dir / 'train_set' / 'predict' / 'total')
+        log_results_performance(writer=total_writer, results=validation_results,
+                                performance_map=validation_performance_map, performance=total_validation_performance,
+                                cutoff=params['cutoff'], results_path=predictions_dir / f'validation_total.csv',
+                                performance_path=model_dir / f'model_validation_perf.csv')
+        return validation_results
 
     @staticmethod
     def testing(config: AppConfig, method_name: MethodName, tag: str) -> Results:
@@ -99,6 +120,7 @@ class Pipeline(object):
         predictions_dir = config.get_ml_predictions_path() / tag
 
         results = Results()
+        performance_map = PerformanceMap(cutoff=params['cutoff'])
         for split_counter in range(1, 6):  # test all 5 models
             # load model
             model = torch.load(model_dir / f'model_{str(split_counter)}.pt')
@@ -111,29 +133,31 @@ class Pipeline(object):
                                     tag=f'test')
 
             logger.info("Calculate predictions per protein")
-            curr_results = predictor(ids=prot_ids)
+            results_i = predictor(ids=prot_ids)
             General.to_csv(df=
-                           curr_results.to_df(cutoff=params['cutoff']),
+                           results_i.to_df(cutoff=params['cutoff']),
                            filename=predictions_dir / f'test_model_{str(split_counter)}.csv')
-
-            predict_writer.add_protein_results(curr_results, cutoff=params['cutoff'])
-            predict_writer.add_single_performance(curr_results.get_single_performance(cutoff=params['cutoff']))
-
-            for k in curr_results.keys():
+            performance_map.append_performance(results_i.get_performance(cutoff=params['cutoff']),
+                                               tag=f'model_{str(split_counter)}')
+            for k in results_i.keys():
                 if k in results.keys():
                     prot_result = results[k]
-                    prot_result.add(curr_results[k])
+                    prot_result.add(results_i[k])
                 else:
-                    results[k] = curr_results[k]
+                    results[k] = results_i[k]
 
         for k in results.keys():
             results[k].normalize(5)
 
-        total_predict_writer = MySummaryWriter(output_dir=stats_dir / 'test_set' / 'predict' / 'normalized')
-        total_predict_writer.add_protein_results(results, cutoff=params['cutoff'])
-        total_predict_writer.add_single_performance(results.get_single_performance(cutoff=params['cutoff']))
-        General.to_csv(df=results.to_df(cutoff=params['cutoff']),
-                       filename=predictions_dir / f'test_norm.csv')
+        total_performance = results.get_performance(cutoff=params['cutoff'])
+        performance_map.append_performance(total_performance, tag=f'model_total')
+
+        # log results and performance
+        total_writer = MySummaryWriter(output_dir=stats_dir / 'test_set' / 'predict' / 'normalized')
+        log_results_performance(writer=total_writer, results=results, performance_map=performance_map,
+                                performance=total_performance, cutoff=params['cutoff'],
+                                results_path=predictions_dir / f'test_total.csv',
+                                performance_path=model_dir / f'model_test_perf.csv')
         return results
 
     @staticmethod

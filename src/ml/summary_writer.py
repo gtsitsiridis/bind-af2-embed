@@ -7,7 +7,7 @@ from logging import getLogger
 
 from torch import Tensor
 from torch.utils.tensorboard import SummaryWriter
-from ml.common import Performance, Results, SinglePerformance
+from ml.common import PerformanceMap, Results, Performance
 from plots import Plots
 import matplotlib.pyplot as plt
 
@@ -18,7 +18,7 @@ class MySummaryWriter:
     def __init__(self, output_dir: Path):
         self._writer = SummaryWriter(log_dir=str(output_dir))
 
-    def add_single_performance(self, performance: SinglePerformance, epoch_id: int = None):
+    def add_performance(self, performance: Performance, epoch_id: int = None):
         writer = self._writer
         for key in performance.keys():
             writer.add_scalar(key, performance[key], epoch_id)
