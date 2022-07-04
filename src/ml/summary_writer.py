@@ -18,12 +18,10 @@ class MySummaryWriter:
     def __init__(self, output_dir: Path):
         self._writer = SummaryWriter(log_dir=str(output_dir))
 
-    def add_single_performance(self, train_performance: SinglePerformance,
-                               val_performance: SinglePerformance, epoch_id: int = None):
+    def add_single_performance(self, performance: SinglePerformance, epoch_id: int = None):
         writer = self._writer
-        for key in train_performance.keys():
-            writer.add_scalar(key + "_train", train_performance[key], epoch_id)
-            writer.add_scalar(key + "_validation", val_performance[key], epoch_id)
+        for key in performance.keys():
+            writer.add_scalar(key, performance[key], epoch_id)
 
     def add_model(self, model: torch.nn.Module, feature_batch: Union[Tensor, List[Tensor]]):
         self._writer.add_graph(model=model, input_to_model=feature_batch)

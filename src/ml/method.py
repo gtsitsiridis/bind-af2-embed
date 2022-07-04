@@ -86,12 +86,23 @@ class Method(metaclass=ABCMeta):
     @staticmethod
     def _init_BCEWithLogits_loss(params: dict, device: str, max_length: int) -> _Loss:
         pos_weights = torch.tensor(params["pos_weights"]).to(device)
+        assert len(params['pos_weights']) == 4, \
+            'the param pos_weights should have a length of 4'
+        # weight is used to mute other ligands (e.g. 0,0,0,1 to test binding vs non-binding)
+        weight = None
+        if 'weight' in params:
+            assert len(params['weight']) == 4, \
+                'the param weights should have a length of 4'
+            weight = torch.tensor(params['weight']).to(device)
+            weight = weight.expand(max_length, 4)
+            weight = weight.t()
+
         pos_weights = pos_weights.expand(max_length, 4)
         pos_weights = pos_weights.t()
 
         # https://stackoverflow.com/questions/57021620/how-to-calculate-unbalanced-weights-for-bcewithlogitsloss-in-pytorch
         # https://discuss.pytorch.org/t/using-bcewithlogisloss-for-multi-label-classification/67011
-        return torch.nn.BCEWithLogitsLoss(reduction='none', pos_weight=pos_weights)
+        return torch.nn.BCEWithLogitsLoss(reduction='none', pos_weight=pos_weights, weight=weight)
 
     @staticmethod
     def _init_adamax_optimizer(params: dict, model: torch.nn.Module):

@@ -218,9 +218,20 @@ class Results(object):
         if tag_value is not None:
             df = df[df['tag'] == tag_value]
 
-        metrics['loss'] = df.loss.mean()
-        metrics['acc'], metrics['prec'], metrics['rec'], metrics['f1'], metrics['mcc'] = \
+        # ligand metrics
+        ligands = df.ligand.unique()
+        for ligand in ligands:
+            df_ligand = df[df.ligand == ligand]
+            metrics['loss' + "_" + ligand] = df_ligand.loss.mean()
+            metrics['acc' + "_" + ligand], metrics['prec' + "_" + ligand], metrics['rec' + "_" + ligand], metrics[
+                'f1' + "_" + ligand], metrics['mcc' + "_" + ligand] = \
+                self.calc_performance_measurements(df=df_ligand)
+
+        # total metrics
+        metrics['loss_total'] = df.loss.mean()
+        metrics['acc_total'], metrics['prec_total'], metrics['rec_total'], metrics['f1_total'], metrics['mcc_total'] = \
             self.calc_performance_measurements(df=df)
+
         return SinglePerformance(metrics=metrics)
 
     @staticmethod
@@ -269,25 +280,17 @@ class SinglePerformance(object):
         return self._metrics[item]
 
     def __str__(self):
-        return "Loss: {:.3f}, Prec: {:.3f}, Recall: {:.3f}, F1: {:.3f}, MCC: {:.3f}".format(self["loss"],
-                                                                                            self["prec"],
-                                                                                            self["rec"],
-                                                                                            self["f1"],
-                                                                                            self["mcc"])
+        return "Loss: {:.3f}, Prec: {:.3f}, Recall: {:.3f}, F1: {:.3f}, MCC: {:.3f}".format(self["loss_total"],
+                                                                                            self["prec_total"],
+                                                                                            self["rec_total"],
+                                                                                            self["f1_total"],
+                                                                                            self["mcc_total"])
 
 
 class Performance(object):
     def __init__(self, cutoff: float):
         self._cutoff = cutoff
-        self._metrics = {
-            "tag": [],
-            "loss": [],
-            "acc": [],
-            "prec": [],
-            "rec": [],
-            "f1": [],
-            "mcc": []
-        }
+        self._metrics = {'tag': []}
 
     def get_single_performance(self, idx: int) -> SinglePerformance:
         assert 0 <= idx < len(self), 'idx is out of range'
@@ -295,11 +298,12 @@ class Performance(object):
 
     def append_single_performance(self, single_performance: SinglePerformance, tag: str):
         metrics = self._metrics
-        for k in metrics.keys():
-            if k == 'tag':
-                metrics['tag'].append(tag)
-                continue
-            metrics[k].append(single_performance[k])
+        metrics['tag'].append(tag)
+        for k in single_performance.keys():
+            if k not in self._metrics:
+                metrics[k] = [single_performance[k]]
+            else:
+                metrics[k].append(single_performance[k])
 
     def keys(self):
         return self._metrics.keys()

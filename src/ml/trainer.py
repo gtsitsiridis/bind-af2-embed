@@ -20,7 +20,9 @@ logger = getLogger('app')
 class MLTrainer(object):
 
     def __init__(self, dataset: Dataset, method: Method, params: dict,
-                 writer: MySummaryWriter = None, performance_file_path: Path = None,
+                 train_writer: MySummaryWriter = None,
+                 val_writer: MySummaryWriter = None,
+                 performance_file_path: Path = None,
                  model_file_path: Path = None):
         if torch.cuda.is_available():
             self._device = 'cuda:0'
@@ -30,20 +32,22 @@ class MLTrainer(object):
         self._dataset = dataset
         self._method = method
         self._params = params
-        self._writer = writer
+        self._train_writer = train_writer
+        self._val_writer = val_writer
         self._performance_file_path = performance_file_path
         self._model_file_path = model_file_path
 
-    def __call__(self, train_ids: list, validation_ids: list):
+    def __call__(self, train_ids: list, validation_ids: list) -> (Results, Results):
         """
         Train & validate predictor for one set of parameters and ids
         :param train_ids:
         :param validation_ids:
-        :return: results of last epoch
+        :return: train and validation results of last epoch
         """
         method = self._method
         params = self._params
-        writer = self._writer
+        train_writer = self._train_writer
+        val_writer = self._val_writer
 
         epochs = params['epochs']
         batch_size = params['batch_size']
@@ -60,9 +64,10 @@ class MLTrainer(object):
         validation_loader = torch.utils.data.DataLoader(validation_set, batch_size=batch_size, shuffle=True,
                                                         pin_memory=True, worker_init_fn=MyWorkerInit())
         performance = Performance(cutoff=params['cutoff'])
+        train_results = None
+        validation_results = None
         for epoch_id in range(epochs):
             logger.debug("Epoch {}".format(epoch_id))
-
             train_results = self._train_epoch(loader=train_loader,
                                               epoch_id=epoch_id)
             validation_results = self._validate_epoch(loader=validation_loader,
@@ -80,10 +85,12 @@ class MLTrainer(object):
             # log performance
             logger.debug("Training performance: " + str(epoch_train_performance))
             logger.debug("Validation performance: " + str(epoch_validation_performance))
-            if writer is not None:
-                writer.add_single_performance(train_performance=epoch_train_performance,
-                                              val_performance=epoch_validation_performance,
-                                              epoch_id=epoch_id)
+            if train_writer is not None:
+                train_writer.add_single_performance(performance=epoch_train_performance,
+                                                    epoch_id=epoch_id)
+            if val_writer is not None:
+                val_writer.add_single_performance(performance=epoch_validation_performance,
+                                                  epoch_id=epoch_id)
 
             # stop training if F1 score doesn't improve anymore
             if early_stopping is not None:
@@ -102,6 +109,7 @@ class MLTrainer(object):
         if self._performance_file_path is not None:
             General.to_csv(df=performance.to_df(),
                            filename=self._performance_file_path)
+        return train_results, validation_results
 
     def _train_epoch(self, loader: torch.utils.data.DataLoader,
                      epoch_id: int) -> Results:
@@ -136,8 +144,8 @@ class MLTrainer(object):
         is_logged = False
         with torch.no_grad():
             for feature_batch, padding_batch, target_batch, loss_mask_batch, prot_ids in loader:
-                if log_model and not is_logged and self._writer is not None:
-                    self._writer.add_model(model=method.model, feature_batch=feature_batch)
+                if log_model and not is_logged and self._val_writer is not None:
+                    self._val_writer.add_model(model=method.model, feature_batch=feature_batch)
                     is_logged = True
 
                 target_batch = target_batch.to(self._device)

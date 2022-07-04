@@ -29,16 +29,16 @@ class MLPredictor(object):
     def __call__(self, ids: list) -> Results:
         validation_set = self._method.get_dataset(ids=ids)
         validation_loader = torch.utils.data.DataLoader(validation_set, batch_size=1, shuffle=True, pin_memory=True)
-        sigm = torch.nn.Sigmoid()
         method = self._method
         writer = self._writer
+        params = self._params
 
         results = Results()
         i = 0
         # batch size is 1
         for features, padding, target, loss_mask, prot_id in validation_loader:
-            if i == 0 and self._writer is not None:
-                self._writer.add_model(model=method.model, feature_batch=features)
+            if i == 0 and writer is not None:
+                writer.add_model(model=method.model, feature_batch=features)
             i += 1
 
             prot_id = prot_id[0]
@@ -57,4 +57,12 @@ class MLPredictor(object):
                                      loss=loss.squeeze(),
                                      tag=self._tag)
                 results[prot.prot_id] = prot
+
+        # log protein results
+        writer.add_protein_results(protein_results=results,
+                                   cutoff=params['cutoff'])
+        # log performance
+        performance = results.get_single_performance(cutoff=params['cutoff'])
+        writer.add_single_performance(performance=performance)
+
         return results

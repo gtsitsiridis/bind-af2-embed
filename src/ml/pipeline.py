@@ -53,13 +53,14 @@ class Pipeline(object):
             method = Pipeline.name_to_method(name=method_name, ml_config=ml_config, dataset=dataset)
             split_counter = fold_array[validation_index[0]]
             train_writer = MySummaryWriter(output_dir=stats_dir / 'train_set' / 'train' / f'split_{str(split_counter)}')
+            validation_writer = MySummaryWriter(
+                output_dir=stats_dir / 'train_set' / 'predict' / f'split_{str(split_counter)}')
             performance_file_path = model_dir / f'model_{str(split_counter)}_perf.csv'
             model_file_path = model_dir / f'model_{str(split_counter)}.pt'
 
-            trainer = MLTrainer(dataset=dataset, method=method, params=params, writer=train_writer,
-                                model_file_path=model_file_path, performance_file_path=performance_file_path)
-            predictor = MLPredictor(dataset=dataset, method=method, params=params, writer=train_writer,
-                                    tag=f'split_{split_counter}')
+            trainer = MLTrainer(dataset=dataset, method=method, params=params, train_writer=train_writer,
+                                val_writer=validation_writer, model_file_path=model_file_path,
+                                performance_file_path=performance_file_path)
 
             # Prepare split run
             train_ids = [prot_ids[train_idx] for train_idx in train_index]
@@ -67,16 +68,8 @@ class Pipeline(object):
 
             # train model
             logger.info("Train model")
-            trainer(train_ids=train_ids, validation_ids=validation_ids)
-
-            # use trained model to predict validation set
-            logger.info("Calculate predictions per protein")
-            curr_results = predictor(ids=validation_ids)
-            predict_writer = MySummaryWriter(
-                output_dir=stats_dir / 'train_set' / 'predict' / f'split_{str(split_counter)}')
-            predict_writer.add_protein_results(protein_results=curr_results,
-                                               cutoff=params['cutoff'])
-            results.merge(curr_results)
+            _, validation_results = trainer(train_ids=train_ids, validation_ids=validation_ids)
+            results.merge(validation_results)
 
             if log_tracemalloc:
                 snapshot2 = tracemalloc.take_snapshot()
@@ -86,8 +79,10 @@ class Pipeline(object):
                     mem_stats += str(stat) + "\n"
                 logger.warning(mem_stats)
 
+        # log results and performance
         total_predict_writer = MySummaryWriter(output_dir=stats_dir / 'train_set' / 'predict' / 'total')
         total_predict_writer.add_protein_results(results, cutoff=params['cutoff'])
+        total_predict_writer.add_single_performance(results.get_single_performance(cutoff=params['cutoff']))
         # save results into csv
         General.to_csv(df=results.to_df(cutoff=params['cutoff']), filename=predictions_dir / f'train_total.csv')
         return results
@@ -122,6 +117,7 @@ class Pipeline(object):
                            filename=predictions_dir / f'test_model_{str(split_counter)}.csv')
 
             predict_writer.add_protein_results(curr_results, cutoff=params['cutoff'])
+            predict_writer.add_single_performance(curr_results.get_single_performance(cutoff=params['cutoff']))
 
             for k in curr_results.keys():
                 if k in results.keys():
@@ -135,6 +131,7 @@ class Pipeline(object):
 
         total_predict_writer = MySummaryWriter(output_dir=stats_dir / 'test_set' / 'predict' / 'normalized')
         total_predict_writer.add_protein_results(results, cutoff=params['cutoff'])
+        total_predict_writer.add_single_performance(results.get_single_performance(cutoff=params['cutoff']))
         General.to_csv(df=results.to_df(cutoff=params['cutoff']),
                        filename=predictions_dir / f'test_norm.csv')
         return results
