@@ -101,7 +101,7 @@ class BindAnnotation(object):
         bind_annotations: Dict[str, BindAnnotation] = dict()
         for prot_id, sequence in sequences.items():
             prot_length = len(sequence)
-            binding_tensor = np.zeros([prot_length, 3], dtype=np.int32)
+            binding_tensor = np.zeros([prot_length, 4], dtype=np.int32)
 
             metal_res = nuc_res = small_res = []
 
@@ -119,6 +119,7 @@ class BindAnnotation(object):
             binding_tensor[metal_residues_0_ind, 0] = 1
             binding_tensor[nuc_residues_0_ind, 1] = 1
             binding_tensor[small_residues_0_ind, 2] = 1
+            binding_tensor[small_residues_0_ind + metal_residues_0_ind + nuc_residues_0_ind, 3] = 1
 
             bind_annotations[prot_id] = BindAnnotation(tensor=binding_tensor, prot_id=prot_id)
         return bind_annotations
@@ -139,10 +140,12 @@ class BindAnnotation(object):
             return 'nuclear'
         elif id_ == 2:
             return 'small'
+        elif id_ == 3:
+            return 'binding'
 
     @staticmethod
     def ids2name(id_str: str) -> str:
-        assert len(id_str) == 3, 'invalid input, expected 4 char string'
+        assert len(id_str) == 4, 'invalid input, expected 4 char string'
         res = []
         if id_str[0] == '1':
             res.append('metal')
@@ -150,8 +153,10 @@ class BindAnnotation(object):
             res.append('nuclear')
         if id_str[2] == '1':
             res.append('small')
+        if len(res) == 0:
+            res.append('other')
         return ','.join(res)
 
     @staticmethod
     def names() -> list:
-        return ['metal', 'nuclear', 'small']
+        return ['metal', 'nuclear', 'small', 'binding']

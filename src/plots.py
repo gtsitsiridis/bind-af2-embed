@@ -5,6 +5,8 @@ from typing import Dict
 import py3Dmol
 import matplotlib.pyplot as plt
 from logging import getLogger
+import seaborn as sns
+from sklearn.metrics import confusion_matrix, roc_curve, auc
 
 logger = getLogger('app')
 BIND_ANNOT_COLORS = {'other': 'black',
@@ -143,3 +145,41 @@ class Plots(object):
                    markerscale=0.5, )
         plt.axis(False)
         return plt
+
+    @staticmethod
+    def plot_confusion_matrix(y_true, y_pred, class_label: str, ax: plt.axes, fontsize=14):
+        cf = confusion_matrix(y_true=y_true, y_pred=y_pred, labels=[0, 1])
+
+        try:
+            group_names = ['True Neg', 'False Pos', 'False Neg', 'True Pos']
+            group_counts = ['{0: 0.0f}'.format(value) for value in cf.flatten()]
+            group_percentages = ['{0: 0.2%}'.format(value) for value in cf.flatten() / np.sum(cf)]
+            labels = [f"{v1}\n{v2}\n{v3}" for v1, v2, v3 in zip(group_names, group_counts, group_percentages)]
+            labels = np.asarray(labels).reshape(2, 2)
+            heatmap = sns.heatmap(cf, annot=labels, fmt="", cbar=False, square=True, cmap='Blues', ax=ax)
+        except ValueError:
+            raise ValueError("Confusion matrix values must be integers.")
+        heatmap.yaxis.set_ticklabels(heatmap.yaxis.get_ticklabels(), rotation=0, ha='right', fontsize=fontsize)
+        heatmap.xaxis.set_ticklabels(heatmap.xaxis.get_ticklabels(), rotation=45, ha='right', fontsize=fontsize)
+        heatmap.set_title('Confusion matrix - ' + class_label)
+
+    @staticmethod
+    def plot_roc(y_true, y_score, class_label: str, ax: plt.axes):
+        fpr, tpr, _ = roc_curve(y_true, y_score)
+        roc_auc = auc(fpr, tpr)
+
+        lw = 2
+        ax.plot(
+            fpr,
+            tpr,
+            color="darkorange",
+            lw=lw,
+            label="ROC curve (area = %0.2f)" % roc_auc,
+        )
+        ax.plot([0, 1], [0, 1], color="navy", lw=lw, linestyle="--")
+        ax.set_xlim([0.0, 1.0])
+        ax.set_ylim([0.0, 1.05])
+        ax.set_xlabel("False Positive Rate")
+        ax.set_ylabel("True Positive Rate")
+        ax.set_title("ROC curve - " + class_label)
+        ax.legend(loc="lower right")

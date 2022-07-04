@@ -12,14 +12,15 @@ logger = getLogger('app')
 def test_ml_pipeline():
     config = AppConfig()
     Logging.setup_app_logger(config=config, write=True)
-    method_name = MethodName.CNN1D
+    # method_name = MethodName.CNN1D_ALL
+    method_name = MethodName.CNN1D_EMBEDDINGS
     tag = f'{datetime.now().strftime("%Y%m%d%H%M")}_{method_name.name}'
-    results = Pipeline.cross_training(config=config, method_name=method_name, subset=2, tag=tag)
+    results = Pipeline.cross_training(config=config, method_name=method_name, tag=tag)
 
-    df = results.to_df()
+    # df = results.to_df()
     print(1)
 
-    # Pipeline.testing(config=config, method_name=MethodName.CNN1D, tag=tag)
+    Pipeline.testing(config=config, method_name=method_name, tag=tag)
 
 
 def __main():

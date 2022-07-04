@@ -102,17 +102,20 @@ class Dataset(object):
 
         return max_len
 
-    def to_feature_tensor_dict(self) -> Dict[str, np.array]:
+    def to_feature_tensor_dict(self, max_length: int) -> Dict[str, np.array]:
         feature_dict: Dict[str, np.array] = dict()
-        max_length = self.determine_max_length()
         embedding_size = self._embedding_size
 
         # pad features based on max_length
         for prot_id, protein in self.proteins.items():
             tensor = protein.to_feature_tensor()
-            feature_dict[prot_id] = np.pad(tensor,
-                                           ([0, 0], [0, 2 * max_length + embedding_size - tensor.shape[1]]),
-                                           mode='constant')
+            padding = 2 * max_length + embedding_size - tensor.shape[1]
+            if padding > 0:
+                feature_dict[prot_id] = np.pad(tensor,
+                                               ([0, 0], [0, padding]),
+                                               mode='constant')
+            else:
+                feature_dict[prot_id] = tensor[:, :2 * max_length + embedding_size]
 
         return feature_dict
 

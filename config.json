@@ -23,6 +23,7 @@
     }
   },
   "log": {
+    "tracemalloc": false,
     "path": "../logs/",
     "loggers": {
       "app": {
@@ -32,14 +33,33 @@
   },
   "ml": {
     "output_dir": "../data/output/ml/",
-    "train_params": {
+    "params": {
       "early_stopping": false,
       "early_stopping_patience": 10,
       "batch_size": 406,
-      "epochs": 10
+      "epochs": 5,
+      "subset": 2,
+      "cutoff": 0.5
     },
     "methods": {
-      "CNN1D": {
+      "CNN1D_ALL": {
+        "params": {
+          "features": 128,
+          "kernel": 5,
+          "dropout": 0.7,
+          "lr": 0.01,
+          "weight_decay": 0,
+          "eps": 1e-8,
+          "max_length": 500,
+          "pos_weights": [
+            7.08,
+            6.22,
+            1.74,
+            1.11
+          ]
+        }
+      },
+      "CNN1D_EMBEDDINGS": {
         "params": {
           "features": 128,
           "kernel": 5,
@@ -48,9 +68,10 @@
           "weight_decay": 0,
           "eps": 1e-8,
           "pos_weights": [
-            8.9,
-            7.7,
-            4.4
+            7.08,
+            6.22,
+            1.74,
+            1.11
           ]
         }
       }

@@ -13,41 +13,48 @@ logger = getLogger('app')
 
 class MLPredictor(object):
 
-    def __init__(self, dataset: Dataset, method: Method):
+    def __init__(self, dataset: Dataset, method: Method, params: dict, tag: str,
+                 writer: MySummaryWriter = None):
         if torch.cuda.is_available():
             self.device = 'cuda:0'
         else:
             self.device = 'cpu'
 
-        self.dataset = dataset
-        self.method = method
+        self._dataset = dataset
+        self._method = method
+        self._writer = writer
+        self._params = params
+        self._tag = tag
 
-    def run(self, ids: list, writer: MySummaryWriter = None) -> Results:
-        validation_set = self.method.get_dataset(ids=ids, dataset=self.dataset)
+    def __call__(self, ids: list) -> Results:
+        validation_set = self._method.get_dataset(ids=ids)
         validation_loader = torch.utils.data.DataLoader(validation_set, batch_size=1, shuffle=True, pin_memory=True)
         sigm = torch.nn.Sigmoid()
-        method = self.method
+        method = self._method
+        writer = self._writer
 
         results = Results()
-        for features, padding, target, mask, prot_id in validation_loader:
+        i = 0
+        # batch size is 1
+        for features, padding, target, loss_mask, prot_id in validation_loader:
+            if i == 0 and self._writer is not None:
+                self._writer.add_model(model=method.model, feature_batch=features)
+            i += 1
+
             prot_id = prot_id[0]
 
             method.model.eval()
             with torch.no_grad():
-                pred = method.forward(feature_batch=features)
                 target = target.to(self.device)
+                loss_mask = loss_mask.to(self.device)
+                pred = method.forward(feature_batch=features)
+                loss = method.loss(pred_batch=pred, loss_mask_batch=loss_mask, target_batch=target)
 
-                pred = pred.squeeze()
-                target = target.squeeze()
-                padding = padding.squeeze()
-
-                pred, pred = General.remove_padded_positions(pred, target, padding)
-                pred = sigm(pred)
-
-                pred = pred.detach().cpu()
-
-                prot = ProteinResult(prot_id=prot_id, target=pred.detach().numpy(),
-                                     predictions=pred.detach().numpy())
+                # create protein result
+                prot = ProteinResult(prot_id=prot_id, target=target.squeeze(),
+                                     predictions=pred.squeeze(),
+                                     padding=padding.squeeze(),
+                                     loss=loss.squeeze(),
+                                     tag=self._tag)
                 results[prot.prot_id] = prot
-
         return results

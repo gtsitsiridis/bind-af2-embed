@@ -7,21 +7,37 @@ from typing import List, Union
 import pandas as pd
 from typing import Dict
 from logging import getLogger
+from plots import Plots
 
 from torch import Tensor
+from data.dataset import BindAnnotation
+from matplotlib import pyplot as plt
+from sklearn.metrics import confusion_matrix
+from plots import Plots
+from pathlib import Path
 
 logger = getLogger('app')
 
 
 class General(object):
     @staticmethod
-    def remove_padded_positions(pred, target, padding):
+    def to_csv(df: pd.DataFrame, filename: Path, append: bool = False):
+        if append:
+            df.to_csv(str(filename), index=False, mode='a', header=False)
+        else:
+            df.to_csv(str(filename), index=False)
+
+    @staticmethod
+    def remove_padded_positions(pred, target, padding, loss):
         indices = (padding != 0).nonzero()
 
         pred_i = pred[:, indices].squeeze()
         target_i = target[:, indices].squeeze()
+        loss_i = None
+        if loss is not None:
+            loss_i = loss[:, indices].squeeze()
 
-        return pred_i, target_i
+        return pred_i, target_i, loss_i
 
     @staticmethod
     def forward(feature_batch: Union[Tensor, List[Tensor]], device: str, model: torch.nn.Module) -> Tensor:
@@ -78,20 +94,94 @@ class EarlyStopping:
 
 class ProteinResult(object):
 
-    def __init__(self, prot_id: str, target: np.array, predictions: np.array):
+    def __init__(self, prot_id: str, padding: torch.Tensor, predictions: torch.Tensor, target: torch.Tensor,
+                 loss: torch.Tensor, tag: str):
         assert target.shape == predictions.shape, "The target and prediction arrays need to have the same shape"
-        self.prot_id = prot_id
-        self.target = target
-        self.predictions = predictions
+        predictions = torch.sigmoid(predictions)
+        predictions, target, loss = General.remove_padded_positions(predictions.detach().numpy(),
+                                                                    target.detach().numpy(),
+                                                                    padding.detach().numpy(),
+                                                                    loss.detach().numpy())
 
-    def add_predictions(self, predictions):
-        self.predictions = np.add(self.predictions, np.around(predictions, 3))
+        self._prot_id = prot_id
+        self._target = target
+        self._predictions = predictions
+        self._tag = tag
+        self._loss = loss
 
-    def normalize_predictions(self, norm_factor):
-        self.predictions = np.around(self.predictions / norm_factor, 3)
+    @property
+    def tag(self):
+        return self._tag
+
+    @property
+    def prot_id(self):
+        return self._prot_id
+
+    def add(self, prot_result: ProteinResult):
+        self._predictions = np.add(self._predictions, np.around(prot_result._predictions, 3))
+        self._loss = np.add(self._loss, np.around(prot_result._loss, 3))
+
+    def normalize(self, norm_factor):
+        self._predictions = np.around(self._predictions / norm_factor, 3)
+        self._loss = np.around(self._loss / norm_factor, 3)
+
+    def plot_confusion_matrix(self, _class: int, cutoff: float) -> plt.figure:
+        pred_copy = self.prediction_to_labels(cutoff=cutoff)
+        target = self._target
+
+        label = BindAnnotation.id2name(_class)
+
+        # Build confusion matrix
+        cf_matrix = confusion_matrix(target[_class], pred_copy[_class])
+        if cf_matrix.shape == (1, 1):
+            return None
+
+        return Plots.plot_confusion_matrix(cf_matrix, label, ["N", "P"])
+
+    def prediction_to_ri(self, cutoff: float) -> np.array:
+        return np.abs(self._predictions - cutoff) / cutoff * 9
+
+    def prediction_to_labels(self, cutoff: float) -> np.array:
+        pred_copy = np.zeros(self._predictions.shape, dtype=np.int32)
+        pred_copy[self._predictions >= cutoff] = 1
+        return pred_copy
+
+    def to_df(self, cutoff: float) -> pd.DataFrame:
+        prot_ids = []
+        positions = []
+        targets = []
+        probabilities = []
+        ligands = []
+        ris = []
+        cutoffs = []
+        predictions = []
+        tags = []
+        losses = []
+
+        tags.extend([self._tag] * len(self) * 4)
+        cutoffs.extend([cutoff] * len(self) * 4)
+        target = self._target.flatten()
+        targets.extend(target.tolist())
+        positions.extend(list(range(len(self))) * 4)
+        prot_ids.extend([self._prot_id] * len(self) * 4)
+        ligands.extend(([BindAnnotation.id2name(0)] * len(self)) +
+                       ([BindAnnotation.id2name(1)] * len(self)) +
+                       ([BindAnnotation.id2name(2)] * len(self)) +
+                       ([BindAnnotation.id2name(3)] * len(self)))
+
+        prediction = self._predictions.flatten()
+        probabilities.extend(prediction.tolist())
+        ris.extend(self.prediction_to_ri(cutoff=cutoff).flatten())
+        predictions.extend(self.prediction_to_labels(cutoff=cutoff).flatten())
+        losses.extend(self._loss.flatten())
+
+        return pd.DataFrame(
+            zip(tags, prot_ids, positions, ligands, targets, predictions, cutoffs, ris, probabilities, losses),
+            columns=['tag', 'protd_id', 'position', 'ligand', 'target', 'prediction', 'cutoff', 'ri',
+                     'prob', 'loss'])
 
     def __len__(self):
-        return self.target.shape[1]
+        return self._target.shape[1]
 
 
 class Results(object):
@@ -104,6 +194,9 @@ class Results(object):
     def keys(self):
         return self.results_dict.keys()
 
+    def append(self, results: Results):
+        self.results_dict.update(results)
+
     def __getitem__(self, item) -> ProteinResult:
         return self.results_dict[item]
 
@@ -113,103 +206,37 @@ class Results(object):
     def __len__(self):
         len(self.results_dict)
 
-    def to_df(self) -> pd.DataFrame:
-        prot_ids = []
-        positions = []
-        targets = []
-        predictions = []
-        ligands = []
+    def to_df(self, cutoff: float) -> pd.DataFrame:
+        return pd.concat(list(map(lambda prot_result: prot_result.to_df(cutoff=cutoff),
+                                  list(self.results_dict.values()))),
+                         axis=0)
 
-        for prot_id, prot_result in self.results_dict.items():
-            target = prot_result.target.flatten()
-            targets.extend(target.tolist())
-            prediction = prot_result.predictions.flatten()
-            predictions.extend(prediction.tolist())
-            positions.extend(list(range(len(prot_result))) * 3)
-            prot_ids.extend([prot_id] * len(prot_result) * 3)
-            ligands.extend(([0] * len(prot_result)) + ([1] * len(prot_result)) + ([2] * len(prot_result)))
+    def get_single_performance(self, cutoff: float, tag_value: str = None) -> SinglePerformance:
+        metrics = {}
+        df = self.to_df(cutoff=cutoff)
 
-        return pd.DataFrame(zip(prot_ids, positions, ligands, targets, predictions),
-                            columns=['protd_id', 'position', 'ligand', 'target', 'prediction'])
+        if tag_value is not None:
+            df = df[df['tag'] == tag_value]
 
-
-class TrainEpoch(object):
-    def __init__(self, _id: int):
-        self._id = _id
-        self.features = None
-        self.pred = None
-        self.target = None
-        self.metrics = {
-            "loss": 0,
-            "loss_count": 0,
-            "tp": 0,
-            "tn": 0,
-            "fp": 0,
-            "fn": 0,
-            "acc": 0,
-            "prec": 0,
-            "rec": 0,
-            "f1": 0,
-            "mcc": 0
-        }
-        self.sigm = torch.nn.Sigmoid()
-
-    def add_batch(self, padding_batch: torch.tensor, pred_batch: torch.tensor, target_batch: torch.tensor):
-        for idx, padding in enumerate(padding_batch):
-            # remove padded positions to calculate tp, fp, tn, fn
-            pred, target = General.remove_padded_positions(pred_batch[idx], target_batch[idx], padding)
-            pred = self.sigm(pred)
-            tp, fp, tn, fn = self.evaluate_per_residue_torch(pred, target)
-            acc, prec, rec, f1, mcc = self.calc_performance_measurements(tp, fp, tn, fn)
-            self.metrics["tp"] += tp
-            self.metrics["fp"] += fp
-            self.metrics["tn"] += tn
-            self.metrics["fn"] += fn
-
-            self.metrics["acc"] += acc
-            self.metrics["prec"] += prec
-            self.metrics["rec"] += rec
-            self.metrics["f1"] += f1
-            self.metrics["mcc"] += mcc
-
-    def normalize(self):
-        self.metrics["loss"] = self.metrics["loss"] / (self.metrics["loss_count"] * 3)
-
-        self.metrics["acc"] /= self.metrics["loss_count"]
-        self.metrics["prec"] /= self.metrics["loss_count"]
-        self.metrics["rec"] /= self.metrics["loss_count"]
-        self.metrics["f1"] /= self.metrics["loss_count"]
-        self.metrics["mcc"] /= self.metrics["loss_count"]
-
-    def __str__(self):
-        return "Loss: {:.3f}, Prec: {:.3f}, Recall: {:.3f}, F1: {:.3f}, MCC: {:.3f}".format(self.metrics["loss"],
-                                                                                            self.metrics["prec"],
-                                                                                            self.metrics["rec"],
-                                                                                            self.metrics["f1"],
-                                                                                            self.metrics["mcc"]) + \
-               "\n" + 'TP: {}, FP: {}, TN: {}, FN: {}'.format(
-            self.metrics["tp"], self.metrics["fp"], self.metrics["tn"], self.metrics["fn"])
+        metrics['loss'] = df.loss.mean()
+        metrics['acc'], metrics['prec'], metrics['rec'], metrics['f1'], metrics['mcc'] = \
+            self.calc_performance_measurements(df=df)
+        return SinglePerformance(metrics=metrics)
 
     @staticmethod
-    def evaluate_per_residue_torch(prediction, target):
-        """Calculate tp, fp, tn, fn for tensor"""
-        # reduce prediction & target to one dimension
-        prediction = prediction.t()
-        target = target.t()
-        prediction = torch.sum(torch.ge(prediction, 0.5), 1)
-        target = torch.sum(torch.ge(target, 0.5), 1)
-
-        # get confusion matrix
-        tp = torch.sum(torch.ge(prediction, 0.5) * torch.ge(target, 0.5)).item()
-        tn = torch.sum(torch.lt(prediction, 0.5) * torch.lt(target, 0.5)).item()
-        fp = torch.sum(torch.ge(prediction, 0.5) * torch.lt(target, 0.5)).item()
-        fn = torch.sum(torch.lt(prediction, 0.5) * torch.ge(target, 0.5)).item()
-
-        return tp, fp, tn, fn
-
-    @staticmethod
-    def calc_performance_measurements(tp, fp, tn, fn):
+    def calc_performance_measurements(df: pd.DataFrame):
         """Calculate precision, recall, f1, mcc, and accuracy"""
+
+        tp = fp = tn = fn = 0
+        counts = df[['target', 'prediction']].value_counts()
+        if (1, 1) in counts.index:
+            tp = counts.loc[(1, 1)] / sum(counts)
+        if (0, 1) in counts.index:
+            fp = counts.loc[(0, 1)] / sum(counts)
+        if (0, 0) in counts.index:
+            tn = counts.loc[(0, 0)] / sum(counts)
+        if (1, 0) in counts.index:
+            fn = counts.loc[(1, 0)] / sum(counts)
 
         tp = float(tp)
         fp = float(fp)
@@ -231,48 +258,57 @@ class TrainEpoch(object):
         return acc, prec, recall, f1, mcc
 
 
-class TrainPerformance(object):
-    def __init__(self):
-        self.train_metrics: List[TrainEpoch] = []
-        self.validate_metrics: List[TrainEpoch] = []
+class SinglePerformance(object):
+    def __init__(self, metrics: dict):
+        self._metrics = metrics
 
-    def add_epoch_performance(self, train_epoch: TrainEpoch, validate_epoch: TrainEpoch):
-        self.train_metrics.append(train_epoch)
-        self.validate_metrics.append(validate_epoch)
+    def keys(self):
+        return self._metrics.keys()
 
-    def plot(self, dir: str):
-        pass
-        # TODO
-        # df = self.to_df()
-        #
-        # # plt.plot([1, 2, 3, 4])
-        # # plt.ylabel('some numbers')
-        # # plt.show()
+    def __getitem__(self, item):
+        return self._metrics[item]
 
-    def to_csv(self, file: str):
-        self.to_df().to_csv(file)
+    def __str__(self):
+        return "Loss: {:.3f}, Prec: {:.3f}, Recall: {:.3f}, F1: {:.3f}, MCC: {:.3f}".format(self["loss"],
+                                                                                            self["prec"],
+                                                                                            self["rec"],
+                                                                                            self["f1"],
+                                                                                            self["mcc"])
 
-    def to_df(self) -> pd.DataFrame:
-        validation_df = self.__to_df(self.validate_metrics, "val")
-        train_df = self.__to_df(self.train_metrics, "train")
-        df = pd.concat([validation_df, train_df])
-        df['epoch'] = list(range(len(df)))
-        df.set_index("epoch", inplace=True)
-        return df
 
-    @staticmethod
-    def __to_df(pe_list: List[TrainEpoch], name: str):
-        metrics = {}
-        for key in pe_list[0].metrics.keys():
-            metrics[key] = []
+class Performance(object):
+    def __init__(self, cutoff: float):
+        self._cutoff = cutoff
+        self._metrics = {
+            "tag": [],
+            "loss": [],
+            "acc": [],
+            "prec": [],
+            "rec": [],
+            "f1": [],
+            "mcc": []
+        }
 
-        for pe in pe_list:
-            for key, value in pe.metrics.items():
-                metrics[key].append(value)
+    def get_single_performance(self, idx: int) -> SinglePerformance:
+        assert 0 <= idx < len(self), 'idx is out of range'
+        return SinglePerformance({k: v[idx] for k, v in self._metrics.items()})
 
-        keys = metrics.keys()
-        values = [metrics[key] for key in keys]
-        column_names = [key + "_" + name for key in keys]
+    def append_single_performance(self, single_performance: SinglePerformance, tag: str):
+        metrics = self._metrics
+        for k in metrics.keys():
+            if k == 'tag':
+                metrics['tag'].append(tag)
+                continue
+            metrics[k].append(single_performance[k])
 
-        return pd.DataFrame(zip(*values),
-                            columns=column_names)
+    def keys(self):
+        return self._metrics.keys()
+
+    def to_df(self):
+        return pd.DataFrame(self._metrics)
+
+    def __getitem__(self, item):
+        return self._metrics[item]
+
+    def __len__(self):
+        return len(self._metrics['loss'])

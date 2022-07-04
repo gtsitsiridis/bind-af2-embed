@@ -19,8 +19,11 @@ class AppConfig(object):
     def get_ml_model_path(self) -> Path:
         return Path(self.get_ml()['output_dir']) / 'models'
 
+    def get_ml_predictions_path(self) -> Path:
+        return Path(self.get_ml()['output_dir']) / 'predictions'
+
     def get_ml_stats_path(self) -> Path:
         return Path(self.get_ml()['output_dir']) / 'stats'
 
-    def get_ml_train_params(self) -> dict:
-        return self.get_ml()["train_params"]
+    def get_ml_params(self) -> dict:
+        return self.get_ml()["params"]

@@ -6,13 +6,60 @@ from logging import getLogger
 logger = getLogger('app')
 
 
-class CNN1DDataset(torch.utils.data.Dataset):
+class CNN1DAllDataset(torch.utils.data.Dataset):
+    """custom Dataset"""
+
+    def __init__(self, samples: list, dataset: Dataset, max_length: int, embedding_size: int):
+        self.features_dict = dataset.to_feature_tensor_dict(max_length=max_length)
+        self.labels_dict = dataset.to_bind_annot_tensor_dict()
+        self.seqs_dict = dataset.to_sequence_str_dict()
+        self.samples = samples
+        self.n_features = 2 * max_length + embedding_size
+        self.max_length = max_length
+
+        logger.info('Number of input features: {}'.format(self.n_features))
+
+    def __len__(self):
+        return len(self.samples)
+
+    def __getitem__(self, item):
+        prot_id = self.samples[item]
+        prot_length = len(self.seqs_dict[prot_id])
+        features_tmp = self.features_dict[prot_id]
+        target_tmp = self.labels_dict[prot_id]
+        if prot_length > self.max_length:
+            prot_length = self.max_length
+            features_tmp = features_tmp[:self.max_length, :self.n_features]
+            target_tmp = target_tmp[:self.max_length, :]
+
+        # pad all inputs to the maximum length
+        features = np.zeros((self.n_features, self.max_length), dtype=np.float32)
+        features[:self.n_features, :prot_length] = np.transpose(
+            features_tmp)  # set feature maps to embedding values
+
+        # padding array
+        padding = np.zeros(self.max_length, dtype=np.float32)
+        padding[:prot_length] = 1  # set last element to 1 because positions are not padded
+
+        target = np.zeros((4, self.max_length), dtype=np.float32)
+        target[:4, :prot_length] = np.transpose(target_tmp)
+        loss_mask = np.zeros((4, self.max_length), dtype=np.float32)
+        loss_mask[:4, :prot_length] = prot_length
+
+        return features, padding, target, loss_mask, prot_id
+
+    def get_input_dimensions(self) -> int:
+        first_key = list(self.features_dict.keys())[0]
+        first_feature = self.features_dict[first_key]
+
+        return np.shape(first_feature)[1]
+
+
+class CNN1DEmbeddingsDataset(torch.utils.data.Dataset):
     """custom Dataset"""
 
     def __init__(self, samples: list, dataset: Dataset):
-        self.features_dict = dataset.to_feature_tensor_dict()
-        self.labels_dict = dataset.to_bind_annot_tensor_dict()
-        self.seqs_dict = dataset.to_sequence_str_dict()
+        self.dataset = dataset
         self.samples = samples
         self.n_features = self.get_input_dimensions()
         self.max_length = dataset.determine_max_length()
@@ -24,8 +71,9 @@ class CNN1DDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, item):
         prot_id = self.samples[item]
-        prot_length = len(self.seqs_dict[prot_id])
-        features_tmp = self.features_dict[prot_id]
+        protein = self.dataset.proteins[prot_id]
+        prot_length = len(protein.sequence)
+        features_tmp = protein.embedding.tensor
 
         # pad all inputs to the maximum length
         features = np.zeros((self.n_features, self.max_length), dtype=np.float32)
@@ -36,18 +84,18 @@ class CNN1DDataset(torch.utils.data.Dataset):
         padding = np.zeros(self.max_length, dtype=np.float32)
         padding[:prot_length] = 1  # set last element to 1 because positions are not padded
 
-        target = np.zeros((3, self.max_length), dtype=np.float32)
-        target[:3, :prot_length] = np.transpose(self.labels_dict[prot_id])
-        loss_mask = np.zeros((3, self.max_length), dtype=np.float32)
-        loss_mask[:3, :prot_length] = prot_length
+        target = np.zeros((4, self.max_length), dtype=np.float32)
+        target[:4, :prot_length] = np.transpose(protein.bind_annotation.tensor)
+        loss_mask = np.zeros((4, self.max_length), dtype=np.float32)
+        loss_mask[:4, :prot_length] = prot_length
 
         return features, padding, target, loss_mask, prot_id
 
     def get_input_dimensions(self) -> int:
-        first_key = list(self.features_dict.keys())[0]
-        first_feature = self.features_dict[first_key]
+        first_key = list(self.dataset.proteins.keys())[0]
+        first_protein = self.dataset.proteins[first_key]
 
-        return np.shape(first_feature)[1]
+        return np.shape(first_protein.embedding.tensor)[1]
 
 
 class CNN2DDataset(torch.utils.data.Dataset):

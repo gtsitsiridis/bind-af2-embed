@@ -9,78 +9,85 @@ import torch
 import numpy as np
 from ml.method import Method
 from logging import getLogger
-from ml.common import TrainEpoch, TrainPerformance, EarlyStopping, General
+from ml.common import Performance, EarlyStopping, General, Results, ProteinResult
 from ml.summary_writer import MySummaryWriter
 import random
+from pathlib import Path
 
 logger = getLogger('app')
 
 
 class MLTrainer(object):
 
-    def __init__(self, dataset: Dataset, method: Method, train_params: dict):
+    def __init__(self, dataset: Dataset, method: Method, params: dict,
+                 writer: MySummaryWriter = None, performance_file_path: Path = None,
+                 model_file_path: Path = None):
         if torch.cuda.is_available():
-            self.device = 'cuda:0'
+            self._device = 'cuda:0'
         else:
-            self.device = 'cpu'
+            self._device = 'cpu'
 
-        self.dataset = dataset
-        self.method = method
-        self._train_params = train_params
+        self._dataset = dataset
+        self._method = method
+        self._params = params
+        self._writer = writer
+        self._performance_file_path = performance_file_path
+        self._model_file_path = model_file_path
 
-    def run(self, train_ids: list, validation_ids: list,
-            writer: MySummaryWriter = None) -> TrainPerformance:
+    def __call__(self, train_ids: list, validation_ids: list):
         """
         Train & validate predictor for one set of parameters and ids
-        :param writer:
         :param train_ids:
         :param validation_ids:
-        :param batch_size:
-        :param epochs:
-        :param is_early_stopping:
-        :return:
+        :return: results of last epoch
         """
-        method = self.method
-        train_params = self._train_params
+        method = self._method
+        params = self._params
+        writer = self._writer
 
-        epochs = train_params['epochs']
-        batch_size = train_params['batch_size']
+        epochs = params['epochs']
+        batch_size = params['batch_size']
         early_stopping = None
-        if train_params['early_stopping']:
-            assert 'early_stopping_patience' in train_params, 'early_stopping_patience needs to be configured' \
-                                                              ' to use early stopping'
-            early_stopping = EarlyStopping(patience=train_params['early_stopping_patience'], delta=0.01)
+        if params['early_stopping']:
+            assert 'early_stopping_patience' in params, 'early_stopping_patience needs to be configured' \
+                                                        ' to use early stopping'
+            early_stopping = EarlyStopping(patience=params['early_stopping_patience'], delta=0.01)
 
-        train_set = method.get_dataset(ids=train_ids, dataset=self.dataset)
-        validation_set = method.get_dataset(ids=validation_ids, dataset=self.dataset)
+        train_set = method.get_dataset(ids=train_ids)
+        validation_set = method.get_dataset(ids=validation_ids)
         train_loader = torch.utils.data.DataLoader(train_set, batch_size=batch_size, shuffle=True, pin_memory=True,
                                                    worker_init_fn=MyWorkerInit())
         validation_loader = torch.utils.data.DataLoader(validation_set, batch_size=batch_size, shuffle=True,
                                                         pin_memory=True, worker_init_fn=MyWorkerInit())
-        performance = TrainPerformance()
-        num_epochs = 0
+        performance = Performance(cutoff=params['cutoff'])
         for epoch_id in range(epochs):
             logger.debug("Epoch {}".format(epoch_id))
 
-            train_epoch = self._train_epoch(method=method, loader=train_loader,
-                                            epoch_id=epoch_id, writer=writer)
-            val_epoch = self._validate_epoch(method=method, loader=validation_loader,
-                                             epoch_id=epoch_id, writer=writer)
+            train_results = self._train_epoch(loader=train_loader,
+                                              epoch_id=epoch_id)
+            validation_results = self._validate_epoch(loader=validation_loader,
+                                                      epoch_id=epoch_id, log_model=(epoch_id == 0))
 
-            logger.debug("Training performance " + str(train_epoch))
-            logger.debug("Validation performance " + str(val_epoch))
+            # get performance
+            epoch_train_performance = train_results.get_single_performance(cutoff=params['cutoff'])
+            epoch_validation_performance = validation_results.get_single_performance(cutoff=params['cutoff'])
 
-            # append average performance for this epoch
-            performance.add_epoch_performance(train_epoch=train_epoch, validate_epoch=val_epoch)
-            num_epochs += 1
+            performance.append_single_performance(single_performance=epoch_train_performance,
+                                                  tag=f'train_epoch_{str(epoch_id)}')
+            performance.append_single_performance(single_performance=epoch_validation_performance,
+                                                  tag=f'val_epoch_{str(epoch_id)}')
 
+            # log performance
+            logger.debug("Training performance: " + str(epoch_train_performance))
+            logger.debug("Validation performance: " + str(epoch_validation_performance))
             if writer is not None:
-                writer.add_performance_epoch(train_epoch=train_epoch,
-                                             val_epoch=val_epoch, epoch_id=epoch_id)
+                writer.add_single_performance(train_performance=epoch_train_performance,
+                                              val_performance=epoch_validation_performance,
+                                              epoch_id=epoch_id)
 
             # stop training if F1 score doesn't improve anymore
             if early_stopping is not None:
-                eval_val = val_epoch.metrics["f1"] * (-1)
+                eval_val = epoch_validation_performance["f1"] * (-1)
                 # eval_val = val_loss
                 early_stopping(eval_val, method.model)
                 if early_stopping.early_stop:
@@ -89,68 +96,79 @@ class MLTrainer(object):
         if early_stopping is not None:
             method.model = early_stopping.best_model
 
-        logger.info("Training performance " + str(performance.train_metrics[-1]))
-        logger.info("Validation performance " + str(performance.validate_metrics[-1]))
+        if self._model_file_path is not None:
+            torch.save(method.model, self._model_file_path)
 
-        return performance
+        if self._performance_file_path is not None:
+            General.to_csv(df=performance.to_df(),
+                           filename=self._performance_file_path)
 
     def _train_epoch(self, loader: torch.utils.data.DataLoader,
-                     method: Method, epoch_id: int,
-                     writer: MySummaryWriter = None) -> TrainEpoch:
-        epoch = TrainEpoch(_id=epoch_id)
+                     epoch_id: int) -> Results:
+        method = self._method
+        results = Results()
+
         method.model.train()
         # feature_batch.shape=(B, 2*T + 1025, T)
         # target_batch.shape=(B, 3, T)
         # loss_mask_batch.shape=(B, 3, T)
-        for feature_batch, padding_batch, target_batch, loss_mask_batch, _ in loader:
+        for feature_batch, padding_batch, target_batch, loss_mask_batch, prot_ids in loader:
             method.optimizer.zero_grad()
-            loss_norm = self._forward(feature_batch=feature_batch, padding_batch=padding_batch,
-                                      target_batch=target_batch,
-                                      loss_mask_batch=loss_mask_batch,
-                                      method=method, epoch=epoch, writer=writer)
+            target_batch = target_batch.to(self._device)
+            loss_mask_batch = loss_mask_batch.to(self._device)
+            pred_batch = method.forward(feature_batch=feature_batch)
+            loss_batch = method.loss(pred_batch=pred_batch, loss_mask_batch=loss_mask_batch, target_batch=target_batch)
+            loss_norm = torch.sum(loss_batch)
             loss_norm.backward()
             method.optimizer.step()
 
-        epoch.normalize()
-        return epoch
+            batch_results = self._batch_results(padding_batch=padding_batch, prot_ids=prot_ids, pred_batch=pred_batch,
+                                                target_batch=target_batch, loss_batch=loss_batch,
+                                                tag=f'train_epoch_{epoch_id}')
+            results.append(batch_results)
+        return results
 
     def _validate_epoch(self, loader: torch.utils.data.DataLoader,
-                        method: Method, epoch_id: int,
-                        writer: MySummaryWriter = None) -> TrainEpoch:
-        epoch = TrainEpoch(_id=epoch_id)
-
+                        epoch_id: int, log_model=False) -> Results:
+        method = self._method
         method.model.eval()
+        results = Results()
+        is_logged = False
         with torch.no_grad():
-            for feature_batch, padding_batch, target_batch, loss_mask_batch, _ in loader:
-                loss_norm = self._forward(feature_batch=feature_batch, target_batch=target_batch,
-                                          loss_mask_batch=loss_mask_batch, padding_batch=padding_batch,
-                                          method=method, epoch=epoch, writer=writer)
+            for feature_batch, padding_batch, target_batch, loss_mask_batch, prot_ids in loader:
+                if log_model and not is_logged and self._writer is not None:
+                    self._writer.add_model(model=method.model, feature_batch=feature_batch)
+                    is_logged = True
 
-        epoch.normalize()
-        return epoch
+                target_batch = target_batch.to(self._device)
+                loss_mask_batch = loss_mask_batch.to(self._device)
+                pred_batch = method.forward(feature_batch=feature_batch)
+                loss_batch = method.loss(pred_batch=pred_batch, loss_mask_batch=loss_mask_batch,
+                                         target_batch=target_batch)
 
-    def _forward(self, feature_batch: Union[Tensor, List[Tensor]], padding_batch: Tensor,
-                 target_batch: Tensor, loss_mask_batch: Tensor, method: Method,
-                 epoch: TrainEpoch, writer: MySummaryWriter = None) -> torch.Tensor:
-        pred_batch = method.forward(feature_batch=feature_batch)
-        target_batch = target_batch.to(self.device)
-        loss_mask_batch = loss_mask_batch.to(self.device)
-        # don't consider padded positions for loss calculation
-        # normalize based on length
-        loss_el_batch = method.loss(pred_batch, target_batch)  # loss_el_batch.shape=(B, 3, T)
-        loss_el_masked_batch = loss_el_batch * loss_mask_batch  # loss_el_masked_batch.shape=(B, 3, T)
-        loss_norm = torch.sum(loss_el_masked_batch)  # loss_norm.shape=(1)
+                batch_results = self._batch_results(padding_batch=padding_batch, prot_ids=prot_ids,
+                                                    pred_batch=pred_batch,
+                                                    target_batch=target_batch, loss_batch=loss_batch,
+                                                    tag=f'validation_epoch_{epoch_id}')
+                results.append(batch_results)
 
-        # add to performance object
-        epoch.metrics["loss"] += loss_norm.item()
-        epoch.metrics["loss_count"] += loss_el_masked_batch.shape[0]
-        epoch.add_batch(padding_batch=padding_batch,
-                        pred_batch=pred_batch,
-                        target_batch=target_batch)
-        if writer is not None:
-            writer.add_model(model=method.model, feature_batch=feature_batch)
+        return results
 
-        return loss_norm
+    @staticmethod
+    def _batch_results(padding_batch: Tensor, target_batch: Tensor, pred_batch: Tensor,
+                       loss_batch: Tensor, prot_ids: tuple, tag: str) -> Results:
+        batch_results = Results()
+        for idx in range(len(padding_batch)):
+            prot_id = prot_ids[idx]
+            target = target_batch[idx]
+            padding = padding_batch[idx]
+            predictions = pred_batch[idx]
+            loss = loss_batch[idx]
+            result = ProteinResult(prot_id=prot_id, padding=padding, target=target, predictions=predictions,
+                                   loss=loss, tag=tag)
+            batch_results[prot_id] = result
+
+        return batch_results
 
 
 class MyWorkerInit(object):
