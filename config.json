@@ -34,11 +34,11 @@
   "ml": {
     "output_dir": "../data/output/ml/",
     "params": {
-      "early_stopping": false,
+      "early_stopping": true,
       "early_stopping_patience": 10,
       "batch_size": 406,
-      "epochs": 20,
-      "subset": 2,
+      "epochs": 200,
+      "subset": -1,
       "cutoff": 0.5
     },
     "methods": {
@@ -68,9 +68,9 @@
           "weight_decay": 0,
           "eps": 1e-8,
           "weight": [
-            0,
-            0,
-            0,
+            1,
+            1,
+            1,
             1
           ],
           "pos_weights": [

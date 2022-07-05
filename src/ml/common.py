@@ -7,7 +7,6 @@ from typing import List, Union
 import pandas as pd
 from typing import Dict
 from logging import getLogger
-from plots import Plots
 
 from torch import Tensor
 from data.dataset import BindAnnotation
@@ -139,46 +138,52 @@ class ProteinResult(object):
         return Plots.plot_confusion_matrix(cf_matrix, label, ["N", "P"])
 
     def prediction_to_ri(self, cutoff: float) -> np.array:
-        return np.abs(self._predictions - cutoff) / cutoff * 9
+        return np.abs(self._predictions - cutoff) / (cutoff + 1e-10) * 9
 
     def prediction_to_labels(self, cutoff: float) -> np.array:
         pred_copy = np.zeros(self._predictions.shape, dtype=np.int32)
         pred_copy[self._predictions >= cutoff] = 1
         return pred_copy
 
-    def to_df(self, cutoff: float) -> pd.DataFrame:
-        prot_ids = []
-        positions = []
-        targets = []
-        probabilities = []
-        ligands = []
-        ris = []
-        cutoffs = []
-        predictions = []
-        tags = []
-        losses = []
+    def to_df(self, cutoff: Union[float, List[float]]) -> pd.DataFrame:
+        if not isinstance(cutoff, list):
+            cutoff = [cutoff]
 
-        tags.extend([self._tag] * len(self) * 4)
-        cutoffs.extend([cutoff] * len(self) * 4)
-        target = self._target.flatten()
-        targets.extend(target.tolist())
-        positions.extend(list(range(len(self))) * 4)
-        prot_ids.extend([self._prot_id] * len(self) * 4)
-        ligands.extend(([BindAnnotation.id2name(0)] * len(self)) +
-                       ([BindAnnotation.id2name(1)] * len(self)) +
-                       ([BindAnnotation.id2name(2)] * len(self)) +
-                       ([BindAnnotation.id2name(3)] * len(self)))
+        dfs = []
+        for cutoff_i in cutoff:
+            prot_ids = []
+            positions = []
+            targets = []
+            probabilities = []
+            ligands = []
+            ris = []
+            cutoffs = []
+            predictions = []
+            tags = []
+            losses = []
 
-        prediction = self._predictions.flatten()
-        probabilities.extend(prediction.tolist())
-        ris.extend(self.prediction_to_ri(cutoff=cutoff).flatten())
-        predictions.extend(self.prediction_to_labels(cutoff=cutoff).flatten())
-        losses.extend(self._loss.flatten())
+            tags.extend([self._tag] * len(self) * 4)
+            cutoffs.extend([cutoff_i] * len(self) * 4)
+            target = self._target.flatten()
+            targets.extend(target.tolist())
+            positions.extend(list(range(len(self))) * 4)
+            prot_ids.extend([self._prot_id] * len(self) * 4)
+            ligands.extend(([BindAnnotation.id2name(0)] * len(self)) +
+                           ([BindAnnotation.id2name(1)] * len(self)) +
+                           ([BindAnnotation.id2name(2)] * len(self)) +
+                           ([BindAnnotation.id2name(3)] * len(self)))
 
-        return pd.DataFrame(
-            zip(tags, prot_ids, positions, ligands, targets, predictions, cutoffs, ris, probabilities, losses),
-            columns=['tag', 'protd_id', 'position', 'ligand', 'target', 'prediction', 'cutoff', 'ri',
-                     'prob', 'loss'])
+            prediction = self._predictions.flatten()
+            probabilities.extend(prediction.tolist())
+            ris.extend(self.prediction_to_ri(cutoff=cutoff_i).flatten())
+            predictions.extend(self.prediction_to_labels(cutoff=cutoff_i).flatten())
+            losses.extend(self._loss.flatten())
+            dfs.append(pd.DataFrame(
+                zip(tags, prot_ids, positions, ligands, targets, predictions, cutoffs, ris, probabilities, losses),
+                columns=['tag', 'prot_id', 'position', 'ligand', 'target', 'prediction', 'cutoff', 'ri',
+                         'prob', 'loss']))
+
+        return pd.concat(dfs, axis=0)
 
     def __len__(self):
         return self._target.shape[1]
@@ -206,37 +211,50 @@ class Results(object):
     def __len__(self):
         len(self.results_dict)
 
-    def to_df(self, cutoff: float) -> pd.DataFrame:
+    def to_df(self, cutoff: Union[float, List[float]]) -> pd.DataFrame:
         return pd.concat(list(map(lambda prot_result: prot_result.to_df(cutoff=cutoff),
                                   list(self.results_dict.values()))),
                          axis=0)
 
     def get_performance(self, cutoff: float, tag_value: str = None) -> Performance:
-        metrics = {}
         df = self.to_df(cutoff=cutoff)
-
         if tag_value is not None:
             df = df[df['tag'] == tag_value]
+        return Performance.df_to_performance(df)
 
-        # ligand metrics
-        ligands = df.ligand.unique()
-        for ligand in ligands:
-            df_ligand = df[df.ligand == ligand]
-            metrics['loss' + "_" + ligand] = df_ligand.loss.mean()
-            metrics['acc' + "_" + ligand], metrics['prec' + "_" + ligand], metrics['rec' + "_" + ligand], metrics[
-                'f1' + "_" + ligand], metrics['mcc' + "_" + ligand] = \
-                self.calc_performance_measurements(df=df_ligand)
+    def get_performance_per_cutoff(self, cutoffs: List[float]) -> Dict[float, Performance]:
+        results = {}
+        for cutoff in cutoffs:
+            results[cutoff] = self.get_performance(cutoff=cutoff)
+        return results
 
-        # total metrics
-        metrics['loss_total'] = df.loss.mean()
-        metrics['acc_total'], metrics['prec_total'], metrics['rec_total'], metrics['f1_total'], metrics['mcc_total'] = \
-            self.calc_performance_measurements(df=df)
 
-        return Performance(metrics=metrics)
+class Performance(object):
+    def __init__(self, metrics: dict):
+        self._metrics = metrics
+
+    def keys(self):
+        return self._metrics.keys()
+
+    def to_dict(self):
+        return self._metrics
+
+    def __getitem__(self, item):
+        return self._metrics[item]
+
+    def __str__(self):
+        return "Loss: {:.3f}, Prec: {:.3f}, Recall: {:.3f}, F1: {:.3f}, MCC: {:.3f}".format(self["loss_total"],
+                                                                                            self["prec_total"],
+                                                                                            self["rec_total"],
+                                                                                            self["f1_total"],
+                                                                                            self["mcc_total"])
 
     @staticmethod
     def calc_performance_measurements(df: pd.DataFrame):
         """Calculate precision, recall, f1, mcc, and accuracy"""
+        # covonebind
+        df1 = df.groupby('prot_id')[['prediction', 'target']].sum()
+        covonebind = len(df1[df1.prediction > 0]) / (len(df1[df1.target > 0]) + 1e-10)
 
         tp = fp = tn = fn = 0
         counts = df[['target', 'prediction']].value_counts()
@@ -266,25 +284,28 @@ class Results(object):
         if (tp > 0 or fp > 0) and (tp > 0 or fn > 0) and (tn > 0 or fp > 0) and (tn > 0 or fn > 0):
             mcc = round((tp * tn - fp * fn) / math.sqrt((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn)), 3)
 
-        return acc, prec, recall, f1, mcc
+        return acc, prec, recall, f1, mcc, covonebind
 
+    @staticmethod
+    def df_to_performance(df: pd.DataFrame):
+        metrics = {}
 
-class Performance(object):
-    def __init__(self, metrics: dict):
-        self._metrics = metrics
+        # ligand metrics
+        ligands = df.ligand.unique()
+        for ligand in ligands:
+            df_ligand = df[df.ligand == ligand]
+            metrics['loss' + "_" + ligand] = df_ligand.loss.mean()
+            metrics['acc' + "_" + ligand], metrics['prec' + "_" + ligand], metrics['rec' + "_" + ligand], metrics[
+                'f1' + "_" + ligand], metrics['mcc' + "_" + ligand], metrics['covonebind' + "_" + ligand] = \
+                Performance.calc_performance_measurements(df=df_ligand)
 
-    def keys(self):
-        return self._metrics.keys()
+        # total metrics
+        metrics['loss_total'] = df.loss.mean()
+        metrics['acc_total'], metrics['prec_total'], metrics['rec_total'], metrics['f1_total'], metrics['mcc_total'], \
+        metrics['covonebind_total'] = \
+            Performance.calc_performance_measurements(df=df)
 
-    def __getitem__(self, item):
-        return self._metrics[item]
-
-    def __str__(self):
-        return "Loss: {:.3f}, Prec: {:.3f}, Recall: {:.3f}, F1: {:.3f}, MCC: {:.3f}".format(self["loss_total"],
-                                                                                            self["prec_total"],
-                                                                                            self["rec_total"],
-                                                                                            self["f1_total"],
-                                                                                            self["mcc_total"])
+        return Performance(metrics=metrics)
 
 
 class PerformanceMap(object):

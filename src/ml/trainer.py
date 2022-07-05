@@ -101,7 +101,7 @@ class MLTrainer(object):
 
             # stop training if F1 score doesn't improve anymore
             if early_stopping is not None:
-                eval_val = epoch_validation_performance["f1"] * (-1)
+                eval_val = epoch_validation_performance["f1_total"] * (-1)
                 # eval_val = val_loss
                 early_stopping(eval_val, method.model)
                 if early_stopping.early_stop:

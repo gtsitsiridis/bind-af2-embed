@@ -12,6 +12,7 @@ from ml.summary_writer import MySummaryWriter
 import tracemalloc
 from ml.common import General, PerformanceMap, Results, Performance
 from pathlib import Path
+import numpy as np
 
 logger = getLogger('app')
 
@@ -21,8 +22,13 @@ def log_results_performance(writer: MySummaryWriter, results: Results, cutoff: f
     # log results and performance
     writer.add_protein_results(results, cutoff=cutoff)
     writer.add_performance(performance)
+
+    cutoffs = np.linspace(0, 1, 10, endpoint=True)
+    cutoffs = (cutoffs * 10).astype(int) / 10
+    writer.add_performance_per_cutoff(results, cutoffs=cutoffs)
+
     # save results into csv
-    General.to_csv(df=results.to_df(cutoff=cutoff),
+    General.to_csv(df=results.to_df(cutoff=list(cutoffs)),
                    filename=results_path)
     General.to_csv(df=performance_map.to_df(),
                    filename=performance_path)

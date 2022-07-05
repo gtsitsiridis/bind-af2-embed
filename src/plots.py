@@ -1,7 +1,8 @@
+from typing import List, Dict
+
 import numpy as np
 import pandas as pd
 import plotly.express as px
-from typing import Dict
 import py3Dmol
 import matplotlib.pyplot as plt
 from logging import getLogger
@@ -183,3 +184,29 @@ class Plots(object):
         ax.set_ylabel("True Positive Rate")
         ax.set_title("ROC curve - " + class_label)
         ax.legend(loc="lower right")
+
+    @staticmethod
+    def plot_ri_hist(x, ax: plt.axes, class_label: str) -> plt.figure:
+        ax.hist(x)
+        ax.set_title(class_label)
+        ax.set_xlabel("RI")
+        ax.set_ylabel("Counts")
+
+    @staticmethod
+    def plot_performance_per_cutoff(metrics_per_cutoff: Dict[float, dict], ax: plt.axes, class_label: str):
+        rec = []
+        prec = []
+        covonebind = []
+        cutoffs = []
+        for cutoff, metrics in metrics_per_cutoff.items():
+            cutoffs.append(cutoff)
+            rec.append(metrics['rec_' + class_label])
+            prec.append(metrics['prec_' + class_label])
+            covonebind.append(metrics['covonebind_' + class_label])
+        ax.plot(cutoffs, rec, color='green', label='Recall')
+        ax.plot(cutoffs, prec, color='blue', label='Precission')
+        ax.plot(cutoffs, covonebind, color='orange', label="CovOneBind")
+        ax.set_title(class_label)
+        ax.set_xlabel("Probability")
+        ax.set_ylabel("Performance")
+        ax.legend()
