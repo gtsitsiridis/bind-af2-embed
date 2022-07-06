@@ -7,7 +7,7 @@ from config import AppConfig
 from ml.trainer import MLTrainer
 from ml.predictor import MLPredictor
 from sklearn.model_selection import PredefinedSplit
-from ml.method import Method, CNN1DAllMethod, CNN1DEmbeddingsMethod, MethodName
+import ml.method as method
 from ml.summary_writer import MySummaryWriter
 import tracemalloc
 from ml.common import General, PerformanceMap, Results, Performance
@@ -37,7 +37,7 @@ def log_results_performance(writer: MySummaryWriter, results: Results, cutoff: f
 class Pipeline(object):
 
     @staticmethod
-    def cross_training(config: AppConfig, method_name: MethodName, tag: str) -> Results:
+    def cross_training(config: AppConfig, dataset: Dataset, method_name: method.MethodName, tag: str, max_length: int) -> Results:
         log_tracemalloc = 'tracemalloc' in config.get_log() and config.get_log()['tracemalloc']
         snapshot1 = None
         if log_tracemalloc:
@@ -50,7 +50,7 @@ class Pipeline(object):
 
         # Prepare data
         logger.info("Prepare data")
-        dataset = Dataset(config, mode='train', subset=params['subset'])
+
         fold_array = dataset.fold_array
         prot_ids = dataset.prot_ids
         ps = PredefinedSplit(fold_array)
@@ -70,7 +70,8 @@ class Pipeline(object):
         for train_index, validation_index in ps.split():
             # Prepare trainer
             logger.info("Prepare trainer")
-            method = Pipeline.name_to_method(name=method_name, ml_config=ml_config, dataset=dataset)
+            method = Pipeline.name_to_method(name=method_name, ml_config=ml_config, dataset=dataset,
+                                             max_length=max_length)
             split_counter = fold_array[validation_index[0]]
             train_writer = MySummaryWriter(output_dir=stats_dir / 'train_set' / 'train' / f'split_{str(split_counter)}')
             validation_writer = MySummaryWriter(
@@ -115,9 +116,8 @@ class Pipeline(object):
         return validation_results
 
     @staticmethod
-    def testing(config: AppConfig, method_name: MethodName, tag: str) -> Results:
+    def testing(config: AppConfig, dataset: Dataset, method_name: method.MethodName, tag: str, max_length: int) -> Results:
         logger.info("Prepare data")
-        dataset = Dataset(config, mode='test')
         prot_ids = dataset.prot_ids
 
         params = config.get_ml_params()
@@ -131,7 +131,7 @@ class Pipeline(object):
             # load model
             model = torch.load(model_dir / f'model_{str(split_counter)}.pt')
             method = Pipeline.name_to_method(name=method_name, ml_config=config.get_ml(),
-                                             dataset=dataset)
+                                             dataset=dataset, max_length=max_length)
             method.model = model
             predict_writer = MySummaryWriter(
                 output_dir=stats_dir / 'test_set' / 'predict' / f'model_{str(split_counter)}')
@@ -175,10 +175,14 @@ class Pipeline(object):
         pass
 
     @staticmethod
-    def name_to_method(name: MethodName, ml_config: dict, dataset: Dataset) -> Method:
-        if name == MethodName.CNN1D_ALL:
-            return CNN1DAllMethod(dataset=dataset, ml_config=ml_config)
-        elif name == MethodName.CNN1D_EMBEDDINGS:
-            return CNN1DEmbeddingsMethod(dataset=dataset, ml_config=ml_config)
+    def name_to_method(name: method.MethodName, ml_config: dict, dataset: Dataset, max_length: int) -> method.Method:
+        if name == method.MethodName.CNN1D_ALL:
+            return method.CNN1DAllMethod(dataset=dataset, ml_config=ml_config)
+        elif name == method.MethodName.CNN1D_EMBEDDINGS:
+            return method.CNN1DEmbeddingsMethod(dataset=dataset, ml_config=ml_config)
+        elif name == method.MethodName.CNN2D_DISTMAPS:
+            return method.CNN2DDistMapMethod(dataset=dataset, ml_config=ml_config, max_length=max_length)
+        elif name == method.MethodName.CNN_COMBINED:
+            return method.CNNCombinedMethod(dataset=dataset, ml_config=ml_config, max_length=max_length)
         else:
             assert False, f"The method {name.name} has not been defined yet."

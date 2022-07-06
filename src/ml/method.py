@@ -5,16 +5,19 @@ from torch.nn.modules.loss import _Loss
 from torch.optim import Optimizer
 from data.dataset import Dataset
 
-from ml.models import CNN1DModel
-from ml.datasets import CNN1DAllDataset, CNN1DEmbeddingsDataset, CNN2DDataset
+import ml.models as models
+import ml.datasets as datasets
 import torch
 from abc import ABCMeta, abstractmethod
 from typing import List, Union
+from ml.summary_writer import MySummaryWriter
 
 
 class MethodName(Enum):
     CNN1D_ALL = "CNN1D_ALL"
     CNN1D_EMBEDDINGS = "CNN1D_EMBEDDINGS"
+    CNN2D_DISTMAPS = "CNN2D_DISTMAPS"
+    CNN_COMBINED = "CNN_COMBINED"
 
 
 class Method(metaclass=ABCMeta):
@@ -80,7 +83,7 @@ class Method(metaclass=ABCMeta):
 
     @staticmethod
     @abstractmethod
-    def get_dataset(ids: list) -> torch.utils.data.Dataset:
+    def get_dataset(ids: list, writer: MySummaryWriter = None) -> torch.utils.data.Dataset:
         pass
 
     @staticmethod
@@ -119,7 +122,8 @@ class CNN1DAllMethod(Method):
     def _init_model(self) -> torch.nn.Module:
         params = self._params
         input_dimensions = 2 * self._params['max_length'] + self._embedding_size
-        return CNN1DModel(input_dimensions, params['features'], params['kernel'], params['dropout']).to(self.device)
+        return models.CNN1DModel(input_dimensions, params['features'], params['kernel'], params['dropout']).to(
+            self.device)
 
     def _init_optimizer(self) -> Optimizer:
         return self._init_adamax_optimizer(params=self._params, model=self.model)
@@ -128,9 +132,9 @@ class CNN1DAllMethod(Method):
         return self._init_BCEWithLogits_loss(params=self._params, device=self.device,
                                              max_length=self._params['max_length'])
 
-    def get_dataset(self, ids: list) -> torch.utils.data.Dataset:
-        return CNN1DAllDataset(ids, self._dataset, max_length=self._params['max_length'],
-                               embedding_size=self._embedding_size)
+    def get_dataset(self, ids: list, writer: MySummaryWriter = None) -> torch.utils.data.Dataset:
+        return datasets.CNN1DAllDataset(ids, self._dataset, max_length=self._params['max_length'],
+                                        embedding_size=self._embedding_size)
 
 
 class CNN1DEmbeddingsMethod(Method):
@@ -142,7 +146,8 @@ class CNN1DEmbeddingsMethod(Method):
     def _init_model(self) -> torch.nn.Module:
         params = self._params
         input_dimensions = self._embedding_size
-        return CNN1DModel(input_dimensions, params['features'], params['kernel'], params['dropout']).to(self.device)
+        return models.CNN1DModel(input_dimensions, params['features'], params['kernel'], params['dropout']).to(
+            self.device)
 
     def _init_optimizer(self) -> Optimizer:
         return self._init_adamax_optimizer(params=self._params, model=self.model)
@@ -150,5 +155,41 @@ class CNN1DEmbeddingsMethod(Method):
     def _init_loss(self) -> _Loss:
         return self._init_BCEWithLogits_loss(params=self._params, device=self.device, max_length=self._max_length)
 
-    def get_dataset(self, ids: list) -> torch.utils.data.Dataset:
-        return CNN1DEmbeddingsDataset(ids, self._dataset)
+    def get_dataset(self, ids: list, writer: MySummaryWriter = None) -> torch.utils.data.Dataset:
+        return datasets.CNN1DEmbeddingsDataset(ids, self._dataset)
+
+
+class CNN2DDistMapMethod(Method):
+    def __init__(self, ml_config: dict, dataset: Dataset, max_length: int):
+        self._max_length = max_length
+        super().__init__(ml_config, MethodName.CNN2D_DISTMAPS, dataset=dataset)
+
+    def _init_model(self) -> torch.nn.Module:
+        return models.CNN2DModel(max_length=self._max_length).to(self.device)
+
+    def _init_optimizer(self) -> Optimizer:
+        return self._init_adamax_optimizer(params=self._params, model=self.model)
+
+    def _init_loss(self) -> _Loss:
+        return self._init_BCEWithLogits_loss(params=self._params, device=self.device, max_length=self._max_length)
+
+    def get_dataset(self, ids: list, writer: MySummaryWriter = None) -> torch.utils.data.Dataset:
+        return datasets.CNN2DDistMaps(ids, self._dataset, writer=writer, max_length=self._max_length)
+
+
+class CNNCombinedMethod(Method):
+    def __init__(self, ml_config: dict, dataset: Dataset, max_length: int):
+        self._max_length = max_length
+        super().__init__(ml_config, MethodName.CNN_COMBINED, dataset=dataset)
+
+    def _init_model(self) -> torch.nn.Module:
+        return models.CNNCombinedModel(max_length=self._max_length).to(self.device)
+
+    def _init_optimizer(self) -> Optimizer:
+        return self._init_adamax_optimizer(params=self._params, model=self.model)
+
+    def _init_loss(self) -> _Loss:
+        return self._init_BCEWithLogits_loss(params=self._params, device=self.device, max_length=self._max_length)
+
+    def get_dataset(self, ids: list, writer: MySummaryWriter = None) -> torch.utils.data.Dataset:
+        return datasets.CNNCombinedDataset(ids, self._dataset, writer=writer, max_length=self._max_length)

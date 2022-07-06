@@ -193,6 +193,20 @@ class Plots(object):
         ax.set_ylabel("Counts")
 
     @staticmethod
+    def plot_plddt_ecdf(plddt_tensor, ax=plt.axes):
+        ax.plot(np.sort(plddt_tensor), np.linspace(0, 1, len(plddt_tensor), endpoint=False))
+        ax.set_title('pLDDT Distribution')
+        ax.set_xlabel("pLDDT")
+        ax.set_ylabel("Probability")
+
+    @staticmethod
+    def plot_protein_length_hist(protein_length, ax=plt.axes):
+        ax.hist(protein_length)
+        ax.set_title(f'Protein length (total proteins={str(len(protein_length))})')
+        ax.set_xlabel("Protein length")
+        ax.set_ylabel("Count")
+
+    @staticmethod
     def plot_performance_per_cutoff(metrics_per_cutoff: Dict[float, dict], ax: plt.axes, class_label: str):
         rec = []
         prec = []

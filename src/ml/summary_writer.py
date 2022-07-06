@@ -12,6 +12,7 @@ from plots import Plots
 import matplotlib.pyplot as plt
 import numpy as np
 from data.annotation import BindAnnotation
+from data.dataset import Dataset
 
 logger = getLogger('app')
 
@@ -65,6 +66,18 @@ class MySummaryWriter:
         self._writer.add_figure(tag='RI distribution',
                                 figure=ri_figures,
                                 global_step=epoch)
+
+    def add_plddt_info(self, plddt_tensor: np.array):
+        fig, ax = plt.subplots()
+        Plots.plot_plddt_ecdf(plddt_tensor, ax=ax)
+        self._writer.add_figure(tag='pLDDT Distribution',
+                                figure=fig)
+
+    def add_protein_length_info(self, protein_length: np.array):
+        fig, ax = plt.subplots()
+        Plots.plot_protein_length_hist(protein_length, ax=ax)
+        self._writer.add_figure(tag='Protein length Distribution',
+                                figure=fig)
 
     def add_performance_per_cutoff(self, protein_results: Results, cutoffs: List[float], epoch: int = None):
         perf_per_cutoff = protein_results.get_performance_per_cutoff(cutoffs=cutoffs)

@@ -3,7 +3,9 @@ from pathlib import Path
 
 
 class AppConfig(object):
-    def __init__(self, config_file: str = '../config.json'):
+    def __init__(self, config_file: str = None):
+        if config_file is None:
+            config_file = '../config.json'
         with open(config_file, 'r') as f:
             self.config = json.load(f)
 

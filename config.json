@@ -11,14 +11,32 @@
     },
     "splits": {
       "train": [
-        "../data/input/splits/ids_split1.txt",
-        "../data/input/splits/ids_split2.txt",
-        "../data/input/splits/ids_split3.txt",
-        "../data/input/splits/ids_split4.txt",
-        "../data/input/splits/ids_split5.txt"
+        {
+          "id": 1,
+          "file": "../data/input/splits/ids_split1.txt"
+        },
+        {
+          "id": 2,
+          "file": "../data/input/splits/ids_split2.txt"
+        },
+        {
+          "id": 3,
+          "file": "../data/input/splits/ids_split3.txt"
+        },
+        {
+          "id": 4,
+          "file": "../data/input/splits/ids_split4.txt"
+        },
+        {
+          "id": 5,
+          "file": "../data/input/splits/ids_split5.txt"
+        }
       ],
       "test": [
-        "../data/input/splits/uniprot_test.txt"
+        {
+          "id": 6,
+          "file": "../data/input/splits/uniprot_test.txt"
+        }
       ]
     }
   },
@@ -34,12 +52,15 @@
   "ml": {
     "output_dir": "../data/output/ml/",
     "params": {
-      "early_stopping": true,
+      "early_stopping": false,
       "early_stopping_patience": 10,
       "batch_size": 406,
-      "epochs": 200,
-      "subset": -1,
-      "cutoff": 0.5
+      "epochs": 1,
+      "subset": 2,
+      "cutoff": 0.5,
+      "plddt_limit": 70,
+      "max_length": 200,
+      "min_length": 20
     },
     "methods": {
       "CNN1D_ALL": {
@@ -60,6 +81,50 @@
         }
       },
       "CNN1D_EMBEDDINGS": {
+        "params": {
+          "features": 128,
+          "kernel": 5,
+          "dropout": 0.7,
+          "lr": 0.01,
+          "weight_decay": 0,
+          "eps": 1e-8,
+          "weight": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "pos_weights": [
+            7.08,
+            6.22,
+            1.74,
+            1.11
+          ]
+        }
+      },
+      "CNN2D_DISTMAPS": {
+        "params": {
+          "features": 128,
+          "kernel": 5,
+          "dropout": 0.7,
+          "lr": 0.01,
+          "weight_decay": 0,
+          "eps": 1e-8,
+          "weight": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "pos_weights": [
+            7.08,
+            6.22,
+            1.74,
+            1.11
+          ]
+        }
+      },
+      "CNN_COMBINED": {
         "params": {
           "features": 128,
           "kernel": 5,

@@ -30,7 +30,7 @@ class MLPredictor(object):
         self._results_file_path = results_file_path
 
     def __call__(self, ids: list) -> Results:
-        validation_set = self._method.get_dataset(ids=ids)
+        validation_set = self._method.get_dataset(ids=ids, writer=self._writer)
         validation_loader = torch.utils.data.DataLoader(validation_set, batch_size=1, shuffle=True, pin_memory=True)
         method = self._method
         writer = self._writer

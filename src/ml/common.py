@@ -138,7 +138,7 @@ class ProteinResult(object):
         return Plots.plot_confusion_matrix(cf_matrix, label, ["N", "P"])
 
     def prediction_to_ri(self, cutoff: float) -> np.array:
-        return np.abs(self._predictions - cutoff) / (cutoff + 1e-10) * 9
+        return np.abs(self._predictions - cutoff + 1e-10) / (cutoff + 1e-10) * 9
 
     def prediction_to_labels(self, cutoff: float) -> np.array:
         pred_copy = np.zeros(self._predictions.shape, dtype=np.int32)
@@ -254,7 +254,7 @@ class Performance(object):
         """Calculate precision, recall, f1, mcc, and accuracy"""
         # covonebind
         df1 = df.groupby('prot_id')[['prediction', 'target']].sum()
-        covonebind = len(df1[df1.prediction > 0]) / (len(df1[df1.target > 0]) + 1e-10)
+        covonebind = len(df1[df1.prediction > 0]) / (len(df1))
 
         tp = fp = tn = fn = 0
         counts = df[['target', 'prediction']].value_counts()

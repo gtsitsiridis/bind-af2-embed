@@ -7,21 +7,33 @@ from utils import FileUtils
 from config import AppConfig
 from data.protein import Protein, ProteinStructure, BindAnnotation, Sequence, Embedding
 from logging import getLogger
-from random import sample
 
 logger = getLogger('app')
 
 
 class Dataset(object):
+    def __init__(self, proteins: Dict[str, Protein], fold_array: list, embedding_size: int):
+        self._proteins = proteins
+        self._fold_array = fold_array
+        self._prot_ids = list(proteins.keys())
+        self._embedding_size = embedding_size
+        logger.info("Number of proteins: " + str(len(self)))
 
-    def __init__(self, config: AppConfig, mode: str = 'all', subset: int = -1):
+    @staticmethod
+    def dataset_from_config(config: AppConfig, mode: str = 'all', subset: int = -1) -> Dataset:
         """
         This object contains a dictionary of all protein objects and useful methods to manipulate them.
+        :param plddt_limit:
         :param config:
         :param subset: How many random proteins to include in the dataset.
         If subset = -1 then all the proteins are included.
         :param mode: one of ["train", "all", "test"]
         """
+        proteins: Dict[str, Protein]
+        fold_array: list
+        prot_ids: list
+        embedding_size: int
+
         files = config.get_input()
 
         assert mode in {'train', 'test', 'all'}, 'mode should be one of ["train", "all", "test"]'
@@ -35,18 +47,20 @@ class Dataset(object):
             split_ids_files = files['splits']['train'] + files['splits']['test']
 
         logger.info("reading splits")
-        self._prot_ids, self._fold_array = FileUtils.read_split_ids(split_ids_files, subset=subset)
+        prot_ids, fold_array = FileUtils.read_split_ids(split_ids_files)
 
         logger.info("reading protein data")
         sequences = Sequence.read_fasta(files['sequences'])
         bind_annotations = BindAnnotation.parse_files(files['biolip_annotations'], sequences=sequences)
         embeddings = Embedding.parse_file(files['embeddings'])
         structures = ProteinStructure.parse_files(distogram_dir=files['distogram_dir'], pdb_dir=files['pdb_dir'])
-        self._embedding_size = list(embeddings.values())[0].tensor.shape[1]
+        embedding_size = list(embeddings.values())[0].tensor.shape[1]
 
-        self._proteins: Dict[str, Protein] = dict()
+        proteins = dict()
+
         to_remove = []
-        for prot_id in self._prot_ids:
+        splits_size_dict = dict()
+        for idx, prot_id in enumerate(prot_ids):
             seq = sequences[prot_id]
             structure = structures[prot_id]
             bind_annot = bind_annotations[prot_id]
@@ -59,18 +73,64 @@ class Dataset(object):
                 to_remove.append(prot_id)
                 continue
 
-            self._proteins[prot_id] = Protein(prot_id=prot_id, sequence=seq,
-                                              bind_annotation=bind_annot,
-                                              embedding=embed,
-                                              structure=structure)
+            if subset > 0:
+                split_id = fold_array[idx]
+                if split_id in splits_size_dict.keys():
+                    if splits_size_dict[split_id] == subset:
+                        to_remove.append(prot_id)
+                        continue
+                    splits_size_dict[split_id] += 1
+                else:
+                    splits_size_dict[split_id] = 1
+
+            proteins[prot_id] = Protein(prot_id=prot_id, sequence=seq,
+                                        bind_annotation=bind_annot,
+                                        embedding=embed,
+                                        structure=structure)
         for val in to_remove:
-            idx = self._prot_ids.index(val)
-            del self.prot_ids[idx]
-            del self.fold_array[idx]
+            idx = prot_ids.index(val)
+            del prot_ids[idx]
+            del fold_array[idx]
 
-        assert len(self._prot_ids) == len(self.proteins), 'Something went wrong. We should not be here.'
+        assert len(prot_ids) == len(proteins), 'Something went wrong. We should not be here.'
 
-        logger.info("Number of proteins: " + str(len(self)))
+        return Dataset(proteins=proteins, fold_array=fold_array, embedding_size=embedding_size)
+
+    def get_subset(self, config: AppConfig, mode: str, subset: int = None,
+                   plddt_limit: int = 70, max_length: int = None, min_length: int = None) -> Dataset:
+        assert mode in {'train', 'test'}, 'mode should be one of ["train", "test"]'
+
+        files = config.get_input()['splits'][mode]
+        split_ids = [file['id'] for file in files]
+        proteins: Dict[str, Protein] = dict()
+        fold_array: list = list()
+        embedding_size: int = self.embedding_size
+
+        splits_size_dict = dict()
+        for idx, prot_id in enumerate(self.prot_ids):
+            protein = self.proteins[prot_id]
+
+            fold = self.fold_array[idx]
+            if fold not in split_ids:
+                continue
+            if np.mean(protein.structure.plddt_tensor) < plddt_limit:
+                continue
+            if max_length is not None and (0 < max_length < len(protein)):
+                continue
+            if min_length is not None and min_length > len(protein):
+                continue
+            if subset is not None and subset > 0:
+                if fold in splits_size_dict.keys():
+                    if splits_size_dict[fold] >= subset:
+                        continue
+                    splits_size_dict[fold] += 1
+                else:
+                    splits_size_dict[fold] = 1
+
+            proteins[prot_id] = protein
+            fold_array.append(fold)
+
+        return Dataset(proteins=proteins, embedding_size=embedding_size, fold_array=fold_array)
 
     def __len__(self):
         return len(self.proteins)

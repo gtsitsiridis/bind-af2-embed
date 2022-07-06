@@ -2,7 +2,6 @@ import logging
 from config import AppConfig
 from pathlib import Path
 from logging import getLogger
-from random import sample
 
 logger = getLogger('app')
 
@@ -17,7 +16,7 @@ class FileUtils(object):
         return ids
 
     @staticmethod
-    def read_split_ids(splits_ids_files: list, subset: int = -1) -> (list, list):
+    def read_split_ids(splits_ids_files: list) -> (list, list):
         """
 
         :param splits_ids_files:
@@ -26,17 +25,12 @@ class FileUtils(object):
         """
         ids = []
         fold_array = []
-        s = 1
         for ids_file in splits_ids_files:
-            split_ids = FileUtils.read_ids(ids_file)
-            if subset > -1:
-                assert subset <= len(
-                    split_ids), f"Please select a subset <= {str(len(split_ids))}"
-                split_ids = sample(split_ids, subset)
-
+            s = ids_file['id']
+            file = ids_file['file']
+            split_ids = FileUtils.read_ids(file)
             ids += split_ids
             fold_array += [s] * len(split_ids)
-            s += 1
         if len(ids) != len(fold_array):
             print('WHAAAAT?')
         return ids, fold_array

@@ -59,8 +59,8 @@ class MLTrainer(object):
                                                         ' to use early stopping'
             early_stopping = EarlyStopping(patience=params['early_stopping_patience'], delta=0.01)
 
-        train_set = method.get_dataset(ids=train_ids)
-        validation_set = method.get_dataset(ids=validation_ids)
+        train_set = method.get_dataset(ids=train_ids, writer=train_writer)
+        validation_set = method.get_dataset(ids=validation_ids, writer=val_writer)
         train_loader = torch.utils.data.DataLoader(train_set, batch_size=batch_size, shuffle=True, pin_memory=True,
                                                    worker_init_fn=MyWorkerInit())
         validation_loader = torch.utils.data.DataLoader(validation_set, batch_size=batch_size, shuffle=True,
