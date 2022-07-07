@@ -7,6 +7,7 @@ from utils import FileUtils
 from config import AppConfig
 from data.protein import Protein, ProteinStructure, BindAnnotation, Sequence, Embedding
 from logging import getLogger
+import statistics
 
 logger = getLogger('app')
 
@@ -226,6 +227,20 @@ class Dataset(object):
             df['other'] = df.apply(lambda x: x['protein_length'] - x['nuclear'] - x['metal'] - x['small'], axis=1)
 
         return df, reduced_embeddings
+
+    def summary(self) -> str:
+        prot_length = [len(prot) for prot in self.proteins.values()]
+        plddt = [prot.structure.plddt_tensor for prot in self.proteins.values()]
+        plddt = np.concatenate(plddt)
+
+        return f'''
+        Summary:
+        Num of proteins: {str(len(self))};
+        Mean protein length: {str(statistics.mean(prot_length))};
+        Min protein length: {str(min(prot_length))};
+        Max protein length: {str(max(prot_length))};
+        Mean plddt: {str(statistics.mean(plddt))};
+        '''
 
     def long_data(self) -> (pd.DataFrame, Dict[str, np.array]):
         """

@@ -54,12 +54,12 @@
     "params": {
       "early_stopping": true,
       "early_stopping_patience": 10,
-      "batch_size": 600,
+      "batch_size": 200,
       "epochs": 200,
       "subset": -1,
       "cutoff": 0.5,
       "plddt_limit": 70,
-      "max_length": -1,
+      "max_length": 540,
       "min_length": -1
     },
     "methods": {

@@ -195,11 +195,16 @@ class CNNCombinedModel(torch.nn.Module):
         padding = int((kernel_size - 1) / 2)
 
         self.conv2 = torch.nn.Sequential(
-            torch.nn.Conv2d(in_channels=2, out_channels=32, kernel_size=(kernel_size, max_length),
+            torch.nn.Conv2d(in_channels=2, out_channels=8, kernel_size=kernel_size,
+                            stride=stride, padding=padding),
+            activation(),
+            torch.nn.Dropout(dropout),
+            torch.nn.BatchNorm2d(8),
+            torch.nn.Conv2d(in_channels=8, out_channels=16, kernel_size=(kernel_size, max_length),
                             stride=stride, padding=(padding, 0)),
             activation(),
             torch.nn.Dropout(dropout),
-            torch.nn.BatchNorm2d(32),
+            torch.nn.BatchNorm2d(16),
             torch.nn.Flatten(2),
             # torch.nn.Conv1d(in_channels=128, out_channels=64, kernel_size=kernel_size,
             #                 stride=stride, padding=padding),
@@ -209,7 +214,7 @@ class CNNCombinedModel(torch.nn.Module):
         )
 
         self.conv3 = torch.nn.Sequential(
-            torch.nn.Conv1d(in_channels=128 + 32, out_channels=4, kernel_size=kernel_size,
+            torch.nn.Conv1d(in_channels=128 + 16, out_channels=4, kernel_size=kernel_size,
                             stride=stride, padding=padding),
         )
 

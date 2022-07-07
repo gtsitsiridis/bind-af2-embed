@@ -27,11 +27,16 @@ def ml_pipeline(method_name: str, config_file: str = None, log: bool = True):
     logger.info(config.get_ml())
 
     dataset = Dataset.dataset_from_config(config, mode='all')
+    logger.info("Total dataset:" + dataset.summary())
     test_dataset = dataset.get_subset(mode='test', config=config, plddt_limit=params['plddt_limit'],
                                       max_length=params['max_length'], min_length=params['min_length'])
     train_dataset = dataset.get_subset(mode='train', config=config, subset=params['subset'],
                                        plddt_limit=params['plddt_limit'], max_length=params['max_length'],
                                        min_length=params['min_length'])
+    logger.info("Test dataset:" + test_dataset.summary())
+    logger.info("Train dataset:" + train_dataset.summary())
+    logger.info("Filtered proteins: " + str(len(dataset) - (len(train_dataset) + len(test_dataset))))
+
     max_length = max(test_dataset.determine_max_length(), train_dataset.determine_max_length())
     del dataset
 
