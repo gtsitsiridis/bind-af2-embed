@@ -1,0 +1,68 @@
+/home/george/Projects/Python/bind-af2-embed/venv/bin/python /snap/pycharm-professional/290/plugins/python/helpers/pycharm/_jb_pytest_runner.py --target main.py::test_cnn2d_model
+Testing started at 11:36 π.μ. ...
+Launching pytest with arguments main.py::test_cnn2d_model --no-header --no-summary -q in /mnt/ssd/Projects/Python/bind-af2-embed/src
+
+============================= test session starts ==============================
+collecting ... collected 1 item
+
+main.py::test_cnn2d_model PASSED                                         [100%]----------------------------------------------------------------
+        Layer (type)               Output Shape         Param #
+================================================================
+            Conv2d-1        [-1, 128, 500, 500]           6,528
+               ELU-2        [-1, 128, 500, 500]               0
+           Dropout-3        [-1, 128, 500, 500]               0
+            Conv2d-4        [-1, 256, 500, 500]         819,456
+           Flatten-5          [-1, 128000, 500]               0
+ AdaptiveAvgPool1d-6            [-1, 128000, 1]               0
+           Flatten-7               [-1, 128000]               0
+            Conv1d-8             [-1, 128, 500]         163,968
+               ELU-9             [-1, 128, 500]               0
+          Dropout-10             [-1, 128, 500]               0
+           Conv1d-11               [-1, 4, 500]           2,564
+================================================================
+Total params: 992,516
+Trainable params: 992,516
+Non-trainable params: 0
+----------------------------------------------------------------
+Input size (MB): 1.91
+Forward/backward pass size (MB): 1712.42
+Params size (MB): 3.79
+Estimated Total Size (MB): 1718.11
+----------------------------------------------------------------
+
+
+======================== 1 passed, 7 warnings in 8.53s =========================
+
+Process finished with exit code 0
+
+
+
+/home/george/Projects/Python/bind-af2-embed/venv/bin/python /snap/pycharm-professional/290/plugins/python/helpers/pycharm/_jb_pytest_runner.py --target main.py::test_cnn1d_model
+Testing started at 11:37 π.μ. ...
+Launching pytest with arguments main.py::test_cnn1d_model --no-header --no-summary -q in /mnt/ssd/Projects/Python/bind-af2-embed/src
+
+============================= test session starts ==============================
+collecting ... collected 1 item
+
+main.py::test_cnn1d_model PASSED                                         [100%]----------------------------------------------------------------
+        Layer (type)               Output Shape         Param #
+================================================================
+            Conv1d-1             [-1, 128, 500]         655,488
+               ELU-2             [-1, 128, 500]               0
+           Dropout-3             [-1, 128, 500]               0
+            Conv1d-4               [-1, 4, 500]           2,564
+================================================================
+Total params: 658,052
+Trainable params: 658,052
+Non-trainable params: 0
+----------------------------------------------------------------
+Input size (MB): 1.95
+Forward/backward pass size (MB): 1.48
+Params size (MB): 2.51
+Estimated Total Size (MB): 5.94
+----------------------------------------------------------------
+
+
+======================== 1 passed, 7 warnings in 5.95s =========================
+
+Process finished with exit code 0
