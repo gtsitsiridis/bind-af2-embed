@@ -176,16 +176,16 @@ class CNNCombinedModel(torch.nn.Module):
         # for stride = 1, then P = (kernel_size -) / 2, so that output_dim = input_dim
         padding = int((kernel_size - 1) / 2)
         self.conv1 = torch.nn.Sequential(
-            torch.nn.Conv1d(in_channels=1024, out_channels=256, kernel_size=kernel_size,
-                            stride=stride, padding=padding),
-            activation(),
-            torch.nn.Dropout(dropout),
-            torch.nn.BatchNorm1d(256),
-            torch.nn.Conv1d(in_channels=256, out_channels=128, kernel_size=kernel_size,
+            torch.nn.Conv1d(in_channels=1024, out_channels=128, kernel_size=kernel_size,
                             stride=stride, padding=padding),
             activation(),
             torch.nn.Dropout(dropout),
             torch.nn.BatchNorm1d(128),
+            # torch.nn.Conv1d(in_channels=256, out_channels=128, kernel_size=kernel_size,
+            #                 stride=stride, padding=padding),
+            # activation(),
+            # torch.nn.Dropout(dropout),
+            # torch.nn.BatchNorm1d(128),
         )
 
         kernel_size = 5
@@ -195,11 +195,11 @@ class CNNCombinedModel(torch.nn.Module):
         padding = int((kernel_size - 1) / 2)
 
         self.conv2 = torch.nn.Sequential(
-            torch.nn.Conv2d(in_channels=2, out_channels=128, kernel_size=(kernel_size, max_length),
+            torch.nn.Conv2d(in_channels=2, out_channels=32, kernel_size=(kernel_size, max_length),
                             stride=stride, padding=(padding, 0)),
             activation(),
             torch.nn.Dropout(dropout),
-            torch.nn.BatchNorm2d(128),
+            torch.nn.BatchNorm2d(32),
             torch.nn.Flatten(2),
             # torch.nn.Conv1d(in_channels=128, out_channels=64, kernel_size=kernel_size,
             #                 stride=stride, padding=padding),
@@ -209,7 +209,7 @@ class CNNCombinedModel(torch.nn.Module):
         )
 
         self.conv3 = torch.nn.Sequential(
-            torch.nn.Conv1d(in_channels=256, out_channels=4, kernel_size=kernel_size,
+            torch.nn.Conv1d(in_channels=128 + 32, out_channels=4, kernel_size=kernel_size,
                             stride=stride, padding=padding),
         )
 

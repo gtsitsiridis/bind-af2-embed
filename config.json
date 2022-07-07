@@ -52,15 +52,15 @@
   "ml": {
     "output_dir": "../data/output/ml/",
     "params": {
-      "early_stopping": false,
+      "early_stopping": true,
       "early_stopping_patience": 10,
-      "batch_size": 406,
-      "epochs": 1,
-      "subset": 2,
+      "batch_size": 600,
+      "epochs": 200,
+      "subset": -1,
       "cutoff": 0.5,
       "plddt_limit": 70,
-      "max_length": 200,
-      "min_length": 20
+      "max_length": -1,
+      "min_length": -1
     },
     "methods": {
       "CNN1D_ALL": {
