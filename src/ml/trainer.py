@@ -54,9 +54,13 @@ class MLTrainer(object):
         epochs = params['epochs']
         batch_size = params['batch_size']
         early_stopping = None
+        early_stopping_metric = None
         if params['early_stopping']:
             assert 'early_stopping_patience' in params, 'early_stopping_patience needs to be configured' \
                                                         ' to use early stopping'
+            assert 'early_stopping_metric' in params, 'early_stopping_metric needs to be configured' \
+                                                      ' to use early stopping'
+            early_stopping_metric = params['early_stopping_metric']
             early_stopping = EarlyStopping(patience=params['early_stopping_patience'], delta=0.01)
 
         train_set = method.get_dataset(ids=train_ids, writer=train_writer)
@@ -65,7 +69,7 @@ class MLTrainer(object):
                                                    worker_init_fn=MyWorkerInit())
         validation_loader = torch.utils.data.DataLoader(validation_set, batch_size=batch_size, shuffle=True,
                                                         pin_memory=True, worker_init_fn=MyWorkerInit())
-        performance_map = PerformanceMap(cutoff=params['cutoff'])
+        performance_map = PerformanceMap()
         train_results = None
         validation_results = None
         for epoch_id in range(epochs):
@@ -101,7 +105,10 @@ class MLTrainer(object):
 
             # stop training if F1 score doesn't improve anymore
             if early_stopping is not None:
-                eval_val = epoch_validation_performance["f1_total"] * (-1)
+                assert early_stopping_metric in epoch_validation_performance.keys(), \
+                    'The early stopping metric configured is not valid. Use one of: ' + \
+                    epoch_validation_performance.keys()
+                eval_val = epoch_validation_performance[early_stopping_metric] * (-1)
                 # eval_val = val_loss
                 early_stopping(eval_val, method.model)
                 if early_stopping.early_stop:
@@ -125,7 +132,7 @@ class MLTrainer(object):
     def _train_epoch(self, loader: torch.utils.data.DataLoader,
                      epoch_id: int) -> Results:
         method = self._method
-        results = Results()
+        results = Results(train=True)
 
         method.model.train()
         # feature_batch.shape=(B, 2*T + 1025, T)
@@ -151,7 +158,7 @@ class MLTrainer(object):
                         epoch_id: int, log_model=False) -> Results:
         method = self._method
         method.model.eval()
-        results = Results()
+        results = Results(train=True)
         is_logged = False
         with torch.no_grad():
             for feature_batch, padding_batch, target_batch, loss_mask_batch, prot_ids in loader:
@@ -176,7 +183,7 @@ class MLTrainer(object):
     @staticmethod
     def _batch_results(padding_batch: Tensor, target_batch: Tensor, pred_batch: Tensor,
                        loss_batch: Tensor, prot_ids: tuple, tag: str) -> Results:
-        batch_results = Results()
+        batch_results = Results(train=True)
         for idx in range(len(padding_batch)):
             prot_id = prot_ids[idx]
             target = target_batch[idx]

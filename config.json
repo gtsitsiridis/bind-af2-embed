@@ -54,8 +54,9 @@
     "params": {
       "early_stopping": true,
       "early_stopping_patience": 10,
+      "early_stopping_metric": "f1_total",
       "batch_size": 200,
-      "epochs": 200,
+      "epochs": 10,
       "subset": -1,
       "cutoff": 0.5,
       "plddt_limit": 70,
@@ -133,9 +134,9 @@
           "weight_decay": 0,
           "eps": 1e-8,
           "weight": [
-            1,
-            1,
-            1,
+            0,
+            0,
+            0,
             1
           ],
           "pos_weights": [

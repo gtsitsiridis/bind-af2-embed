@@ -13,7 +13,7 @@ import argparse
 logger = getLogger('app')
 
 
-def ml_pipeline(method_name: str, config_file: str = None, log: bool = True):
+def ml_pipeline(method_name: str, config_file: str = None, num_of_splits: int = 5, log: bool = True):
     config = AppConfig(config_file=config_file)
     params = config.get_ml_params()
     Logging.setup_app_logger(config=config, write=log)
@@ -41,10 +41,11 @@ def ml_pipeline(method_name: str, config_file: str = None, log: bool = True):
     del dataset
 
     Pipeline.cross_training(config=config, method_name=method_name, tag=tag, dataset=train_dataset,
-                            max_length=max_length)
+                            max_length=max_length, num_of_splits=num_of_splits)
     logger.info("Training done")
 
-    Pipeline.testing(config=config, method_name=method_name, tag=tag, dataset=test_dataset, max_length=max_length)
+    Pipeline.testing(config=config, method_name=method_name, tag=tag, dataset=test_dataset,
+                     num_of_splits=num_of_splits, max_length=max_length)
     logger.info("Evaluation done")
 
 
@@ -66,10 +67,11 @@ def test_combined_model():
 def __main():
     parser = argparse.ArgumentParser(description='Trainer')
     parser.add_argument('--config', required=False)
-    parser.add_argument('--method')
+    parser.add_argument('--method', required=True, choices=[method.value for method in MethodName])
+    parser.add_argument('--splits', required=False, type=int, choices=[1, 2, 3, 4, 5], default=5)
     parser.add_argument('--log', action='store_true', default=False)
     args = parser.parse_args()
-    ml_pipeline(method_name=args.method, config_file=args.config, log=args.log)
+    ml_pipeline(method_name=args.method, config_file=args.config, log=args.log, num_of_splits=args.splits)
 
 
 if __name__ == '__main__':

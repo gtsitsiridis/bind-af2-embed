@@ -2,18 +2,18 @@ from __future__ import annotations
 
 import torch
 import numpy as np
-import math
 from typing import List, Union
 import pandas as pd
 from typing import Dict
 from logging import getLogger
-
 from torch import Tensor
 from data.dataset import BindAnnotation
 from matplotlib import pyplot as plt
 from sklearn.metrics import confusion_matrix
 from plots import Plots
 from pathlib import Path
+import math
+from scipy.stats import t
 
 logger = getLogger('app')
 
@@ -190,7 +190,8 @@ class ProteinResult(object):
 
 
 class Results(object):
-    def __init__(self):
+    def __init__(self, train: bool = False):
+        self._train = train
         self.results_dict: Dict[str, ProteinResult] = {}
 
     def merge(self, results_dict: Results):
@@ -220,7 +221,7 @@ class Results(object):
         df = self.to_df(cutoff=cutoff)
         if tag_value is not None:
             df = df[df['tag'] == tag_value]
-        return Performance.df_to_performance(df)
+        return Performance.df_to_performance(df, train=self._train)
 
     def get_performance_per_cutoff(self, cutoffs: List[float]) -> Dict[float, Performance]:
         results = {}
@@ -250,11 +251,57 @@ class Performance(object):
                                                                                             self["mcc_total"])
 
     @staticmethod
-    def calc_performance_measurements(df: pd.DataFrame):
+    def calc_performance_measurements(df: pd.DataFrame, tag: str, train: bool = False) -> dict:
         """Calculate precision, recall, f1, mcc, and accuracy"""
-        # covonebind
-        df1 = df.groupby('prot_id')[['prediction', 'target']].sum()
-        covonebind = len(df1[df1.prediction > 0]) / (len(df1))
+        columns = {'prot_id', 'position', 'prediction', 'target'}
+        assert columns.issubset(set(df.columns)), \
+            'the dataframe should include the following columns: ' + str(columns)
+
+        tmp = df.groupby(['prot_id', 'position'])['prot_id'].count()
+        if sum(tmp) != len(tmp):
+            logger.warning('You are trying to calculate performance measurements on multiple predictions!')
+        del tmp
+
+        def get_mean_ci(vec):
+            """
+            Calculate mean and 95% CI for a given vector
+            :param vec: vector
+            :return: mean and ci
+            """
+            mean = round(np.average(vec), 3)
+            if len(vec) > 1:
+                ci = round(np.std(vec) / math.sqrt(len(vec)) * t.ppf((1 + 0.95) / 2, len(vec)), 3)
+            else:
+                ci = 0
+
+            return {'mean': mean, 'ci': ci}
+
+        metrics = {}
+
+        if train:
+            metrics.update(Performance.calc_performance_per_protein(df, tag=tag))
+        else:
+            # covonebind
+            df1 = df.groupby('prot_id')[['prediction', 'target']].sum()
+            metrics['covonebind'] = len(df1[df1.prediction > 0]) / (len(df1))
+
+            # means with CI
+            metrics_df = df.groupby('prot_id'). \
+                apply(lambda df_prot: pd.Series(Performance.calc_performance_per_protein(df_prot, tag=tag)))
+            metrics_df = metrics_df.apply(lambda metric: pd.Series(get_mean_ci(metric)), axis=0)
+            means = metrics_df.loc['mean']
+            cis = metrics_df.loc['ci']
+            cis.index = cis.index.map(lambda x: x + '_ci')
+            metrics.update(means.to_dict())
+            metrics.update(cis.to_dict())
+
+        return metrics
+
+    @staticmethod
+    def calc_performance_per_protein(df: pd.DataFrame, tag: str) -> dict:
+        columns = {'prot_id', 'target', 'prediction'}
+        assert columns.issubset(set(df.columns)), \
+            'the dataframe should include the following columns: ' + str(columns) + ". Given: " + str(df.columns)
 
         tp = fp = tn = fn = 0
         counts = df[['target', 'prediction']].value_counts()
@@ -283,39 +330,89 @@ class Performance(object):
             f1 = round(2 * recall * prec / (recall + prec), 3)
         if (tp > 0 or fp > 0) and (tp > 0 or fn > 0) and (tn > 0 or fp > 0) and (tn > 0 or fn > 0):
             mcc = round((tp * tn - fp * fn) / math.sqrt((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn)), 3)
-
-        return acc, prec, recall, f1, mcc, covonebind
+        metrics = {'acc_' + tag: acc, 'prec_' + tag: prec, 'rec_' + tag: recall, 'f1_' + tag: f1, 'mcc_' + tag: mcc}
+        return metrics
 
     @staticmethod
-    def df_to_performance(df: pd.DataFrame):
+    def calc_cross_predictions(df: pd.DataFrame) -> dict:
+        """Calculate cross-predictions"""
+        columns = {'prot_id', 'target', 'prediction', 'ligand'}
+        assert columns.issubset(set(df.columns)), \
+            'the dataframe should include the following columns: ' + str(columns) + ". Given: " + str(df.columns)
+        cross_predictions = {ligand + '_cross_pred': 0 for ligand in df.ligand.unique()}
+        cross_predictions['true_pred'] = 0
+        cross_predictions['total_cross_pred'] = 0
+
+        def get_cross_predictions(df_position):
+            # not that efficient but whatever
+            for i in range(0, len(df_position)):
+                row_i = df_position.iloc[i]
+                ligand_i = row_i['ligand']
+                prediction_i = row_i['prediction']
+                target_i = row_i['target']
+                if prediction_i == target_i == 1:
+                    cross_predictions['true_pred'] += 1
+                elif prediction_i != target_i:
+                    # check for cross_predictions
+                    for j in range(i + 1, len(df_position)):
+                        row_j = df_position.iloc[j]
+                        ligand_j = row_j['ligand']
+                        prediction_j = row_j['prediction']
+                        target_j = row_j['target']
+                        if prediction_i == 1 and target_j == 1:
+                            cross_predictions[ligand_i + '_cross_pred'] += 1
+                            cross_predictions['total_cross_pred'] += 1
+                        elif target_i == 1 and prediction_j == 1:
+                            cross_predictions[ligand_j + '_cross_pred'] += 1
+                            cross_predictions['total_cross_pred'] += 1
+
+        df.groupby(['prot_id', 'position'])[['prediction', 'target', 'ligand']].apply(
+            get_cross_predictions)
+
+        return cross_predictions
+
+    @staticmethod
+    def df_to_performance(df: pd.DataFrame, train: bool = False, cutoff: float = 0.5):
         metrics = {}
+        df = df[df.cutoff == cutoff]
+
+        assert len(df.tag.unique()) == 1, 'You are trying to compute the performance of multiple tags'
+        ligands = set(df.ligand.unique()) - {'binding'}
+
+        # binding 1 (using the trained outcome)
+        metrics.update(
+            Performance.calc_performance_measurements(df=df[df.ligand == 'binding'], tag='binding_1', train=train))
 
         # ligand metrics
-        ligands = df.ligand.unique()
         for ligand in ligands:
-            df_ligand = df[df.ligand == ligand]
-            metrics['loss' + "_" + ligand] = df_ligand.loss.mean()
-            metrics['acc' + "_" + ligand], metrics['prec' + "_" + ligand], metrics['rec' + "_" + ligand], metrics[
-                'f1' + "_" + ligand], metrics['mcc' + "_" + ligand], metrics['covonebind' + "_" + ligand] = \
-                Performance.calc_performance_measurements(df=df_ligand)
+            metrics.update(
+                Performance.calc_performance_measurements(df=df[df.ligand == ligand], tag=ligand, train=train))
 
-        # total metrics
+        # total metrics (used for training)
         metrics['loss_total'] = df.loss.mean()
-        metrics['acc_total'], metrics['prec_total'], metrics['rec_total'], metrics['f1_total'], metrics['mcc_total'], \
-        metrics['covonebind_total'] = \
-            Performance.calc_performance_measurements(df=df)
+        metrics.update(Performance.calc_performance_measurements(df=df, tag='total', train=train))
+
+        if not train:
+            # cross-predictions
+            cross_predictions = Performance.calc_cross_predictions(df[df.ligand.isin(ligands)])
+            metrics.update(cross_predictions)
+
+            # binding 2 (by merging the ligand outcomes)
+            df_merged = df[df.ligand.isin(ligands)].groupby(['prot_id', 'position'])[
+                ['prediction', 'target']].max().reset_index()
+            metrics.update(Performance.calc_performance_measurements(df=df_merged, tag='binding_2', train=train))
 
         return Performance(metrics=metrics)
 
 
 class PerformanceMap(object):
-    def __init__(self, cutoff: float):
-        self._cutoff = cutoff
+    def __init__(self):
         self._metrics = {'tag': []}
+        self._cross_predictions = {'tag': []}
 
     def get_performance(self, idx: int) -> Performance:
         assert 0 <= idx < len(self), 'idx is out of range'
-        return Performance({k: v[idx] for k, v in self._metrics.items()})
+        return Performance({k: v[idx] for k, v in self._metrics.items() if k != 'tag'})
 
     def append_performance(self, performance: Performance, tag: str):
         metrics = self._metrics

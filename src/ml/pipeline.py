@@ -37,7 +37,8 @@ def log_results_performance(writer: MySummaryWriter, results: Results, cutoff: f
 class Pipeline(object):
 
     @staticmethod
-    def cross_training(config: AppConfig, dataset: Dataset, method_name: method.MethodName, tag: str, max_length: int) -> Results:
+    def cross_training(config: AppConfig, dataset: Dataset, method_name: method.MethodName, tag: str,
+                       max_length: int, num_of_splits: int) -> Results:
         log_tracemalloc = 'tracemalloc' in config.get_log() and config.get_log()['tracemalloc']
         snapshot1 = None
         if log_tracemalloc:
@@ -65,9 +66,13 @@ class Pipeline(object):
 
         # Start training
         logger.info("Start training")
-        validation_results = Results()
-        validation_performance_map = PerformanceMap(cutoff=params['cutoff'])
+        validation_results = Results(train=True)
+        validation_performance_map = PerformanceMap()
+        split_counter = 0
         for train_index, validation_index in ps.split():
+            if split_counter == num_of_splits:
+                break
+            split_counter += 1
             # Prepare trainer
             logger.info("Prepare trainer")
             method = Pipeline.name_to_method(name=method_name, ml_config=ml_config, dataset=dataset,
@@ -116,7 +121,8 @@ class Pipeline(object):
         return validation_results
 
     @staticmethod
-    def testing(config: AppConfig, dataset: Dataset, method_name: method.MethodName, tag: str, max_length: int) -> Results:
+    def testing(config: AppConfig, dataset: Dataset, method_name: method.MethodName, tag: str,
+                max_length: int, num_of_splits: int) -> Results:
         logger.info("Prepare data")
         prot_ids = dataset.prot_ids
 
@@ -126,8 +132,8 @@ class Pipeline(object):
         predictions_dir = config.get_ml_predictions_path() / tag
 
         results = Results()
-        performance_map = PerformanceMap(cutoff=params['cutoff'])
-        for split_counter in range(1, 6):  # test all 5 models
+        performance_map = PerformanceMap()
+        for split_counter in range(1, num_of_splits + 1):  # test all 5 models
             # load model
             model = torch.load(model_dir / f'model_{str(split_counter)}.pt')
             method = Pipeline.name_to_method(name=method_name, ml_config=config.get_ml(),
@@ -153,7 +159,7 @@ class Pipeline(object):
                     results[k] = results_i[k]
 
         for k in results.keys():
-            results[k].normalize(5)
+            results[k].normalize(num_of_splits)
 
         total_performance = results.get_performance(cutoff=params['cutoff'])
         performance_map.append_performance(total_performance, tag=f'model_total')
