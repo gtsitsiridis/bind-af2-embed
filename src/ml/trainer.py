@@ -105,13 +105,11 @@ class MLTrainer(object):
                                                      epoch_id=epoch_id)
                 if epoch_id % 10 == 0:
                     train_writer.add_protein_results(train_results, cutoff=ml_params['cutoff'], epoch=epoch_id)
-                    train_writer.add_performance_figures(epoch_train_performance, epoch_id=epoch_id)
             if val_writer is not None:
                 val_writer.add_performance_scalars(performance=epoch_validation_performance,
                                                    epoch_id=epoch_id)
                 if epoch_id % 10 == 0:
                     val_writer.add_protein_results(validation_results, cutoff=ml_params['cutoff'], epoch=epoch_id)
-                    val_writer.add_performance_figures(epoch_validation_performance, epoch_id=epoch_id)
 
             # stop training if F1 score doesn't improve anymore
             if early_stopping is not None:
