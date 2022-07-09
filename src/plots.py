@@ -8,6 +8,10 @@ import matplotlib.pyplot as plt
 from logging import getLogger
 import seaborn as sns
 from sklearn.metrics import confusion_matrix, roc_curve, auc
+from sklearn.exceptions import UndefinedMetricWarning
+import warnings
+
+warnings.filterwarnings("ignore", category=UndefinedMetricWarning)
 
 logger = getLogger('app')
 BIND_ANNOT_COLORS = {'other': 'black',
@@ -224,3 +228,22 @@ class Plots(object):
         ax.set_xlabel("Probability")
         ax.set_ylabel("Performance")
         ax.legend()
+
+    @staticmethod
+    def plot_performance_table(metrics: dict, ax: plt.axes, class_label: str):
+        labels = ['mcc', 'f1', 'rec', 'prec']
+        means = [metrics[label + '_' + class_label] for label in labels]
+        cis = [metrics[label + '_' + class_label + '_ci'] for label in labels]
+        labels = ['MCC', 'F1', 'Recall', 'Precission']
+        results = {labels[i]: f'%0.3f ± %0.2f %%' % (means[i], cis[i]) for i in range(len(labels))}
+        df = pd.DataFrame(results, index=[0])
+        ax[0].table(cellText=df.values, colLabels=df.columns, loc='center')
+        ax[0].set_title(class_label)
+        # hide axes
+        ax[0].axis('off')
+        ax[0].axis('tight')
+
+        # bar plot
+        ax[1].bar(labels, means, yerr=cis, align='center', alpha=0.5, ecolor='black', capsize=10)
+        ax[1].yaxis.grid(True)
+        ax[1].set_ylim([0, 1])

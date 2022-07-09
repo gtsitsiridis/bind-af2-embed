@@ -29,3 +29,6 @@ class AppConfig(object):
 
     def get_ml_params(self) -> dict:
         return self.get_ml()["params"]
+
+    def get_method_params(self) -> dict:
+        return self.get_ml_params()["method"]

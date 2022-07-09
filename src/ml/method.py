@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from enum import Enum
 
 from torch import Tensor
@@ -11,6 +13,9 @@ import torch
 from abc import ABCMeta, abstractmethod
 from typing import List, Union
 from ml.summary_writer import MySummaryWriter
+from logging import getLogger
+
+logger = getLogger('app')
 
 
 class MethodName(Enum):
@@ -19,13 +24,25 @@ class MethodName(Enum):
     CNN2D_DISTMAPS = "CNN2D_DISTMAPS"
     CNN_COMBINED = "CNN_COMBINED"
 
+    @classmethod
+    def method(cls, method_params: dict, dataset: Dataset, max_length: int) -> Method:
+        name = MethodName[method_params["name"]]
+        if name == cls.CNN1D_ALL:
+            return CNN1DAllMethod(dataset=dataset, params=method_params, max_length=max_length)
+        elif name == cls.CNN1D_EMBEDDINGS:
+            return CNN1DEmbeddingsMethod(dataset=dataset, params=method_params)
+        elif name == cls.CNN2D_DISTMAPS:
+            return CNN2DDistMapMethod(dataset=dataset, params=method_params, max_length=max_length)
+        elif name == cls.CNN_COMBINED:
+            return CNNCombinedMethod(dataset=dataset, params=method_params, max_length=max_length)
+        else:
+            assert False, f"The method {name.name} has not been defined yet."
+
 
 class Method(metaclass=ABCMeta):
-    def __init__(self, ml_config: dict, name: MethodName, dataset: Dataset):
-        assert name.name in ml_config["methods"], f'The method {name.name} has not been configured.'
-        model_config = ml_config["methods"][name.name]
-        self._params = model_config['params']
-        self._name = name
+    def __init__(self, params: dict, dataset: Dataset):
+        self._params = params
+        self._name = MethodName[params['name']]
         self._dataset = dataset
         if torch.cuda.is_available():
             self.device = 'cuda:0'
@@ -96,6 +113,7 @@ class Method(metaclass=ABCMeta):
         if 'weight' in params:
             assert len(params['weight']) == 4, \
                 'the param weights should have a length of 4'
+            logger.warning("Custom weights have been passed to the BCE loss!")
             weight = torch.tensor(params['weight']).to(device)
             weight = weight.expand(max_length, 4)
             weight = weight.t()
@@ -115,13 +133,14 @@ class Method(metaclass=ABCMeta):
 
 
 class CNN1DAllMethod(Method):
-    def __init__(self, ml_config: dict, dataset: Dataset):
+    def __init__(self, params: dict, dataset: Dataset, max_length: int):
+        self._max_length = max_length
         self._embedding_size = dataset.embedding_size
-        super().__init__(ml_config, MethodName.CNN1D_ALL, dataset=dataset)
+        super().__init__(params, dataset=dataset)
 
     def _init_model(self) -> torch.nn.Module:
         params = self._params
-        input_dimensions = 2 * self._params['max_length'] + self._embedding_size
+        input_dimensions = 2 * self._max_length + self._embedding_size
         return models.CNN1DModel(input_dimensions, params['features'], params['kernel'], params['dropout']).to(
             self.device)
 
@@ -130,18 +149,18 @@ class CNN1DAllMethod(Method):
 
     def _init_loss(self) -> _Loss:
         return self._init_BCEWithLogits_loss(params=self._params, device=self.device,
-                                             max_length=self._params['max_length'])
+                                             max_length=self._max_length)
 
     def get_dataset(self, ids: list, writer: MySummaryWriter = None) -> torch.utils.data.Dataset:
-        return datasets.CNN1DAllDataset(ids, self._dataset, max_length=self._params['max_length'],
+        return datasets.CNN1DAllDataset(ids, self._dataset, max_length=self._max_length,
                                         embedding_size=self._embedding_size)
 
 
 class CNN1DEmbeddingsMethod(Method):
-    def __init__(self, ml_config: dict, dataset: Dataset):
+    def __init__(self, params: dict, dataset: Dataset):
         self._max_length = dataset.determine_max_length()
         self._embedding_size = dataset.embedding_size
-        super().__init__(ml_config, MethodName.CNN1D_EMBEDDINGS, dataset=dataset)
+        super().__init__(params, dataset=dataset)
 
     def _init_model(self) -> torch.nn.Module:
         params = self._params
@@ -160,9 +179,9 @@ class CNN1DEmbeddingsMethod(Method):
 
 
 class CNN2DDistMapMethod(Method):
-    def __init__(self, ml_config: dict, dataset: Dataset, max_length: int):
+    def __init__(self, params: dict, dataset: Dataset, max_length: int):
         self._max_length = max_length
-        super().__init__(ml_config, MethodName.CNN2D_DISTMAPS, dataset=dataset)
+        super().__init__(params, dataset=dataset)
 
     def _init_model(self) -> torch.nn.Module:
         return models.CNN2DModel(max_length=self._max_length).to(self.device)
@@ -178,9 +197,9 @@ class CNN2DDistMapMethod(Method):
 
 
 class CNNCombinedMethod(Method):
-    def __init__(self, ml_config: dict, dataset: Dataset, max_length: int):
+    def __init__(self, params: dict, dataset: Dataset, max_length: int):
         self._max_length = max_length
-        super().__init__(ml_config, MethodName.CNN_COMBINED, dataset=dataset)
+        super().__init__(params, dataset=dataset)
 
     def _init_model(self) -> torch.nn.Module:
         return models.CNNCombinedModel(max_length=self._max_length).to(self.device)

@@ -21,10 +21,21 @@ class MySummaryWriter:
     def __init__(self, output_dir: Path):
         self._writer = SummaryWriter(log_dir=str(output_dir))
 
-    def add_performance(self, performance: Performance, epoch_id: int = None):
+    def add_performance_scalars(self, performance: Performance, epoch_id: int = None):
         writer = self._writer
         for key in performance.keys():
             writer.add_scalar(key, performance[key], epoch_id)
+
+    def add_performance_figures(self, performance: Performance, epoch_id: int = None):
+        ligands = BindAnnotation.names()
+        figs = []
+        for ligand in ligands:
+            fig, ax = plt.subplots(2, 1)
+            Plots.plot_performance_table(performance.to_dict(), ax=ax, class_label=ligand)
+            figs.append(fig)
+        self._writer.add_figure(tag='performance',
+                                figure=figs,
+                                global_step=epoch_id)
 
     def add_model(self, model: torch.nn.Module, feature_batch: Union[Tensor, List[Tensor]]):
         self._writer.add_graph(model=model, input_to_model=feature_batch)

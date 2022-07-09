@@ -65,7 +65,8 @@ class MLPredictor(object):
         writer.add_protein_results(protein_results=results,
                                    cutoff=params['cutoff'])
         performance = results.get_performance(cutoff=params['cutoff'])
-        writer.add_performance(performance=performance)
+        writer.add_performance_figures(performance)
+        writer.add_performance_scalars(performance=performance)
         if self._results_file_path is not None:
             General.to_csv(df=results.to_df(cutoff=params['cutoff']),
                            filename=self._results_file_path)
