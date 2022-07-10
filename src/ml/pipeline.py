@@ -177,11 +177,3 @@ class Pipeline(object):
                                 results_path=predictions_dir / f'test_total.csv',
                                 performance_path=model_dir / f'model_test_perf.csv')
         return results
-
-    @staticmethod
-    def hyperparameter_optimization():
-        """
-        TODO
-        :return:
-        """
-        pass

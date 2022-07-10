@@ -204,6 +204,8 @@ class Results(object):
         df = self.to_df(cutoff=cutoff)
         if tag_value is not None:
             df = df[df['tag'] == tag_value]
+        else:
+            df.tag = 'no-tag'
         return Performance.df_to_performance(df, is_train=is_train)
 
     def get_performance_per_cutoff(self, cutoffs: List[float]) -> Dict[float, Performance]:
@@ -235,16 +237,13 @@ class Performance(object):
 
     @staticmethod
     def calc_performance_measurements(df: pd.DataFrame, tag: str, is_train: bool,
-                                      supress_warning: bool = False) -> dict:
+                                      ligand_check: bool = True) -> dict:
         """Calculate precision, recall, f1, mcc, and accuracy"""
         columns = {'prot_id', 'position', 'prediction', 'target'}
         assert columns.issubset(set(df.columns)), \
             'the dataframe should include the following columns: ' + str(columns)
-
-        tmp = df.groupby(['prot_id', 'position'])['prot_id'].count()
-        if not supress_warning and (sum(tmp) != len(tmp)):
-            logger.warning('You are trying to calculate performance measurements on multiple predictions!')
-        del tmp
+        assert not ligand_check or len(
+            df.ligand.unique()) == 1, 'You are trying to calculate performance measurements on multiple ligands!'
 
         def get_mean_ci(vec):
             """
@@ -362,8 +361,10 @@ class Performance(object):
     def df_to_performance(df: pd.DataFrame, is_train: bool):
         metrics = {}
 
+        # sanity checks
         assert len(df.cutoff.unique()) == 1, 'You are trying to compute the performance of multiple cutoffs'
         assert len(df.tag.unique()) == 1, 'You are trying to compute the performance of multiple tags'
+
         ligands = set(df.ligand.unique())
         ligands_nobinding = ligands - {'binding'}
 
@@ -374,8 +375,9 @@ class Performance(object):
 
         # total metrics (used for training)
         metrics['loss_total'] = df.loss.mean()
+        # all predictions (including different ligands)
         metrics.update(Performance.calc_performance_measurements(df=df, tag='total', is_train=is_train,
-                                                                 supress_warning=True))
+                                                                 ligand_check=False))
 
         # these metrics will slow down the training
         if not is_train:
