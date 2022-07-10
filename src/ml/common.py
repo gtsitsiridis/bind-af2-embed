@@ -239,7 +239,7 @@ class Performance(object):
     def calc_performance_measurements(df: pd.DataFrame, tag: str, is_train: bool,
                                       ligand_check: bool = True) -> dict:
         """Calculate precision, recall, f1, mcc, and accuracy"""
-        columns = {'prot_id', 'position', 'prediction', 'target'}
+        columns = {'prot_id', 'position', 'prediction', 'target', 'ligand'}
         assert columns.issubset(set(df.columns)), \
             'the dataframe should include the following columns: ' + str(columns)
         assert not ligand_check or len(
@@ -388,6 +388,7 @@ class Performance(object):
             # binding 2 (by merging the ligand outcomes)
             df_merged = df[df.ligand.isin(ligands_nobinding)].groupby(['prot_id', 'position'])[
                 ['prediction', 'target']].max().reset_index()
+            df_merged['ligand'] = 'binding'
             metrics.update(Performance.calc_performance_measurements(df=df_merged, tag='binding_2', is_train=is_train))
 
         return Performance(metrics=metrics)
