@@ -4,24 +4,23 @@ from config import AppConfig
 from utils import Logging
 from logging import getLogger
 from ml.pipeline import Pipeline
-from ml.method import MethodName
 from datetime import datetime
-import ml.models as models
 from data.dataset import Dataset
 import argparse
+import os
 
 logger = getLogger('app')
 
 
-def ml_pipeline(config_file: str = None, log: bool = True):
-    config = AppConfig(config_file=config_file)
+def ml_pipeline(method_config: str, config_dir: str = None, log: bool = True):
+    config = AppConfig(method_config, config_dir=config_dir)
     ml_params = config.get_ml_params()
     method_params = config.get_method_params()
     Logging.setup_app_logger(config=config, write=log)
-    method_name = MethodName[method_params['name']]
-    tag = f'{datetime.now().strftime("%Y%m%d%H%M")}_{method_name.name}'
+    tag = f'{datetime.now().strftime("%Y%m%d%H%M")}_{method_config}'
     logger.info(f'Tag {tag}')
     logger.info(ml_params)
+    logger.info(method_params)
 
     dataset = Dataset.dataset_from_config(config, mode='all')
     logger.info("Total dataset:" + dataset.summary())
@@ -44,27 +43,35 @@ def ml_pipeline(config_file: str = None, log: bool = True):
     logger.info("Evaluation done")
 
 
-def test_cnn1d_model():
-    model = models.CNN1DModel(in_channels=1024, feature_channels=128, kernel_size=5, dropout=0.7)
-    torchsummary.summary(model, input_size=(1024, 500))
-
-
-def test_cnn2d_model():
-    model = models.CNN2DModel(500)
-    torchsummary.summary(model, input_size=(2, 500, 500))
-
-
-def test_combined_model():
-    model = models.CNNCombinedModel(500)
-    torchsummary.summary(model, input_size=[(1024, 500), (2, 500, 500)])
+#
+# def test_cnn1d_model():
+#     model = models.CNN1DModel(in_channels=1024, feature_channels=128, kernel_size=5, dropout=0.7)
+#     torchsummary.summary(model, input_size=(1024, 500))
+#
+#
+# def test_cnn2d_model():
+#     model = models.DistMapsModel(500)
+#     torchsummary.summary(model, input_size=(2, 500, 500))
+#
+#
+# def test_combined_model():
+#     model = models.CombinedModel(500)
+#     torchsummary.summary(model, input_size=[(1024, 500), (2, 500, 500)])
 
 
 def __main():
     parser = argparse.ArgumentParser(description='Trainer')
-    parser.add_argument('--config', required=False)
+    parser.add_argument('--config', required=True)
+    parser.add_argument('--method', required=True)
     parser.add_argument('--log', action='store_true', default=False)
     args = parser.parse_args()
-    ml_pipeline(config_file=args.config, log=args.log)
+
+    if args.method == 'all':
+        methods = [method.split('.')[0] for method in os.listdir(args.config + '/methods')]
+        for method in methods:
+            ml_pipeline(config_dir=args.config, log=args.log, method_config=method)
+    else:
+        ml_pipeline(config_dir=args.config, log=args.log, method_config=args.method)
 
 
 if __name__ == '__main__':

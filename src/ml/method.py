@@ -19,22 +19,23 @@ logger = getLogger('app')
 
 
 class MethodName(Enum):
-    CNN1D_ALL = "CNN1D_ALL"
-    CNN1D_EMBEDDINGS = "CNN1D_EMBEDDINGS"
-    CNN2D_DISTMAPS = "CNN2D_DISTMAPS"
-    CNN_COMBINED = "CNN_COMBINED"
+    EMBEDDINGS = "EMBEDDINGS"
+    DISTMAPS = "DISTMAPS"
+    COMBINED_V1 = "COMBINED_V1"
+    COMBINED_V2 = "COMBINED_V2"
 
     @classmethod
     def method(cls, method_params: dict, dataset: Dataset, max_length: int) -> Method:
         name = MethodName[method_params["name"]]
-        if name == cls.CNN1D_ALL:
-            return CNN1DAllMethod(dataset=dataset, params=method_params, max_length=max_length)
-        elif name == cls.CNN1D_EMBEDDINGS:
-            return CNN1DEmbeddingsMethod(dataset=dataset, params=method_params)
-        elif name == cls.CNN2D_DISTMAPS:
-            return CNN2DDistMapMethod(dataset=dataset, params=method_params, max_length=max_length)
-        elif name == cls.CNN_COMBINED:
-            return CNNCombinedMethod(dataset=dataset, params=method_params, max_length=max_length)
+
+        if name == cls.EMBEDDINGS:
+            return EmbeddingsMethod(dataset=dataset, params=method_params)
+        elif name == cls.DISTMAPS:
+            return DistMapsMethod(dataset=dataset, params=method_params, max_length=max_length)
+        if name == cls.COMBINED_V1:
+            return CombinedV1Method(dataset=dataset, params=method_params, max_length=max_length)
+        elif name == cls.COMBINED_V2:
+            return CombinedV2Method(dataset=dataset, params=method_params, max_length=max_length)
         else:
             assert False, f"The method {name.name} has not been defined yet."
 
@@ -132,7 +133,49 @@ class Method(metaclass=ABCMeta):
         return torch.optim.Adamax(model.parameters(), **optim_args)
 
 
-class CNN1DAllMethod(Method):
+class EmbeddingsMethod(Method):
+    def __init__(self, params: dict, dataset: Dataset):
+        self._max_length = dataset.determine_max_length()
+        self._embedding_size = dataset.embedding_size
+        super().__init__(params, dataset=dataset)
+
+    def _init_model(self) -> torch.nn.Module:
+        params = self._params
+        return models.EmbeddingsModel(params['features'], params['kernel'], params['dropout']).to(
+            self.device)
+
+    def _init_optimizer(self) -> Optimizer:
+        return self._init_adamax_optimizer(params=self._params, model=self.model)
+
+    def _init_loss(self) -> _Loss:
+        return self._init_BCEWithLogits_loss(params=self._params, device=self.device, max_length=self._max_length)
+
+    def get_dataset(self, ids: list, writer: MySummaryWriter = None) -> torch.utils.data.Dataset:
+        return datasets.EmbeddingsDataset(ids, self._dataset)
+
+
+class DistMapsMethod(Method):
+    def __init__(self, params: dict, dataset: Dataset, max_length: int):
+        self._max_length = max_length
+        super().__init__(params, dataset=dataset)
+
+    def _init_model(self) -> torch.nn.Module:
+        params = self._params
+        return models.DistMapsModel(max_length=self._max_length, feature_channels=params['features'],
+                                    kernel_size=params['kernel'],
+                                    dropout=params['dropout']).to(self.device)
+
+    def _init_optimizer(self) -> Optimizer:
+        return self._init_adamax_optimizer(params=self._params, model=self.model)
+
+    def _init_loss(self) -> _Loss:
+        return self._init_BCEWithLogits_loss(params=self._params, device=self.device, max_length=self._max_length)
+
+    def get_dataset(self, ids: list, writer: MySummaryWriter = None) -> torch.utils.data.Dataset:
+        return datasets.DistMapsDataset(ids, self._dataset, writer=writer, max_length=self._max_length)
+
+
+class CombinedV1Method(Method):
     def __init__(self, params: dict, dataset: Dataset, max_length: int):
         self._max_length = max_length
         self._embedding_size = dataset.embedding_size
@@ -141,7 +184,7 @@ class CNN1DAllMethod(Method):
     def _init_model(self) -> torch.nn.Module:
         params = self._params
         input_dimensions = 2 * self._max_length + self._embedding_size
-        return models.CNN1DModel(input_dimensions, params['features'], params['kernel'], params['dropout']).to(
+        return models.CombinedModelV1(input_dimensions, params['features'], params['kernel'], params['dropout']).to(
             self.device)
 
     def _init_optimizer(self) -> Optimizer:
@@ -152,21 +195,21 @@ class CNN1DAllMethod(Method):
                                              max_length=self._max_length)
 
     def get_dataset(self, ids: list, writer: MySummaryWriter = None) -> torch.utils.data.Dataset:
-        return datasets.CNN1DAllDataset(ids, self._dataset, max_length=self._max_length,
-                                        embedding_size=self._embedding_size)
+        return datasets.CombinedV1Dataset(ids, self._dataset, max_length=self._max_length,
+                                          embedding_size=self._embedding_size)
 
 
-class CNN1DEmbeddingsMethod(Method):
-    def __init__(self, params: dict, dataset: Dataset):
-        self._max_length = dataset.determine_max_length()
-        self._embedding_size = dataset.embedding_size
+class CombinedV2Method(Method):
+    def __init__(self, params: dict, dataset: Dataset, max_length: int):
+        self._max_length = max_length
         super().__init__(params, dataset=dataset)
 
     def _init_model(self) -> torch.nn.Module:
         params = self._params
-        input_dimensions = self._embedding_size
-        return models.CNN1DModel(input_dimensions, params['features'], params['kernel'], params['dropout']).to(
-            self.device)
+        return models.CombinedModelV2(max_length=self._max_length, emb_feature_channels=params['emb_features'],
+                                      distmap_depth=params['distmap_depth'],
+                                      distmap_feature_channels=params['distmap_features'],
+                                      kernel_size=params['kernel'], dropout=params['dropout']).to(self.device)
 
     def _init_optimizer(self) -> Optimizer:
         return self._init_adamax_optimizer(params=self._params, model=self.model)
@@ -175,40 +218,4 @@ class CNN1DEmbeddingsMethod(Method):
         return self._init_BCEWithLogits_loss(params=self._params, device=self.device, max_length=self._max_length)
 
     def get_dataset(self, ids: list, writer: MySummaryWriter = None) -> torch.utils.data.Dataset:
-        return datasets.CNN1DEmbeddingsDataset(ids, self._dataset)
-
-
-class CNN2DDistMapMethod(Method):
-    def __init__(self, params: dict, dataset: Dataset, max_length: int):
-        self._max_length = max_length
-        super().__init__(params, dataset=dataset)
-
-    def _init_model(self) -> torch.nn.Module:
-        return models.CNN2DModel(max_length=self._max_length).to(self.device)
-
-    def _init_optimizer(self) -> Optimizer:
-        return self._init_adamax_optimizer(params=self._params, model=self.model)
-
-    def _init_loss(self) -> _Loss:
-        return self._init_BCEWithLogits_loss(params=self._params, device=self.device, max_length=self._max_length)
-
-    def get_dataset(self, ids: list, writer: MySummaryWriter = None) -> torch.utils.data.Dataset:
-        return datasets.CNN2DDistMaps(ids, self._dataset, writer=writer, max_length=self._max_length)
-
-
-class CNNCombinedMethod(Method):
-    def __init__(self, params: dict, dataset: Dataset, max_length: int):
-        self._max_length = max_length
-        super().__init__(params, dataset=dataset)
-
-    def _init_model(self) -> torch.nn.Module:
-        return models.CNNCombinedModel(max_length=self._max_length).to(self.device)
-
-    def _init_optimizer(self) -> Optimizer:
-        return self._init_adamax_optimizer(params=self._params, model=self.model)
-
-    def _init_loss(self) -> _Loss:
-        return self._init_BCEWithLogits_loss(params=self._params, device=self.device, max_length=self._max_length)
-
-    def get_dataset(self, ids: list, writer: MySummaryWriter = None) -> torch.utils.data.Dataset:
-        return datasets.CNNCombinedDataset(ids, self._dataset, writer=writer, max_length=self._max_length)
+        return datasets.CombinedV2Dataset(ids, self._dataset, writer=writer, max_length=self._max_length)

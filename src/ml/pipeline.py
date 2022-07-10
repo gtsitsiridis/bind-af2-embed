@@ -138,7 +138,7 @@ class Pipeline(object):
         results = Results()
         performance_map = PerformanceMap()
         for split_counter in range(1, ml_params["num_cross_splits"] + 1):  # test all 5 models
-            logger.info("Split: " + str((split_counter + 1)))
+            logger.info("Split: " + str(split_counter))
             # load model
             model = torch.load(model_dir / f'model_{str(split_counter)}.pt')
             method = ml_method.MethodName.method(method_params=method_params, dataset=dataset, max_length=max_length)

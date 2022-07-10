@@ -3,11 +3,13 @@ from pathlib import Path
 
 
 class AppConfig(object):
-    def __init__(self, config_file: str = None):
-        if config_file is None:
-            config_file = '../config.json'
-        with open(config_file, 'r') as f:
+    def __init__(self, method: str, config_dir: str = None):
+        if config_dir is None:
+            config_dir = '../config'
+        with open(config_dir + '/config.json', 'r') as f:
             self.config = json.load(f)
+        with open(config_dir + '/methods/' + method + ".json", 'r') as f:
+            self.method_config = json.load(f)
 
     def get_input(self) -> dict:
         return self.config['input']
@@ -31,4 +33,4 @@ class AppConfig(object):
         return self.get_ml()["params"]
 
     def get_method_params(self) -> dict:
-        return self.get_ml_params()["method"]
+        return self.method_config

@@ -1,0 +1,15 @@
+{
+  "name": "COMBINED_V1",
+  "features": 128,
+  "kernel": 5,
+  "dropout": 0.7,
+  "lr": 0.01,
+  "weight_decay": 0,
+  "eps": 1e-8,
+  "pos_weights": [
+    7.08,
+    6.22,
+    1.74,
+    1.11
+  ]
+}

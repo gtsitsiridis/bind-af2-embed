@@ -1,0 +1,68 @@
+{
+  "input": {
+    "embeddings": "../data/input/bindembed_embeddings.h5",
+    "distogram_dir": "../data/input/af2/dist_maps_af2/",
+    "pdb_dir": "../data/input/af2/pdb_structures/",
+    "sequences": "../data/input/sequences.fasta",
+    "biolip_annotations": {
+      "small": "../data/input/biolip/binding_residues_2.5_small.txt",
+      "metal": "../data/input/biolip/binding_residues_2.5_metal.txt",
+      "nuclear": "../data/input/biolip/binding_residues_2.5_nuclear.txt"
+    },
+    "splits": {
+      "train": [
+        {
+          "id": 1,
+          "file": "../data/input/splits/ids_split1.txt"
+        },
+        {
+          "id": 2,
+          "file": "../data/input/splits/ids_split2.txt"
+        },
+        {
+          "id": 3,
+          "file": "../data/input/splits/ids_split3.txt"
+        },
+        {
+          "id": 4,
+          "file": "../data/input/splits/ids_split4.txt"
+        },
+        {
+          "id": 5,
+          "file": "../data/input/splits/ids_split5.txt"
+        }
+      ],
+      "test": [
+        {
+          "id": 6,
+          "file": "../data/input/splits/uniprot_test.txt"
+        }
+      ]
+    }
+  },
+  "log": {
+    "tracemalloc": false,
+    "path": "../logs/",
+    "loggers": {
+      "app": {
+        "level": "DEBUG"
+      }
+    }
+  },
+  "ml": {
+    "output_dir": "../data/output/ml/",
+    "params": {
+      "early_stopping": true,
+      "early_stopping_patience": 10,
+      "batch_size": 200,
+      "epochs": 1,
+      "subset": 2,
+      "cutoff": 0.5,
+      "plddt_limit": 70,
+      "max_length": 540,
+      "min_length": -1,
+      "num_cross_splits": 5,
+      "train_mode": "LIGAND"
+    }
+  }
+}

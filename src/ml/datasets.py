@@ -28,12 +28,12 @@ class MLDataset(torch.utils.data.Dataset):
             writer.add_protein_length_info(np.array(prot_length_list))
 
 
-class CNN1DAllDataset(MLDataset):
+class CombinedV1Dataset(MLDataset):
     """custom Dataset"""
 
     def __init__(self, samples: list, dataset: Dataset, max_length: int, embedding_size: int,
                  writer: MySummaryWriter = None):
-        super(CNN1DAllDataset, self).__init__(dataset=dataset, samples=samples, writer=writer)
+        super(CombinedV1Dataset, self).__init__(dataset=dataset, samples=samples, writer=writer)
         self.features_dict = dataset.to_feature_tensor_dict(max_length=max_length)
         self.labels_dict = dataset.to_bind_annot_tensor_dict()
         self.seqs_dict = dataset.to_sequence_str_dict()
@@ -78,7 +78,7 @@ class CNN1DAllDataset(MLDataset):
         return np.shape(first_feature)[1]
 
 
-class CNN1DEmbeddingsDataset(MLDataset):
+class EmbeddingsDataset(MLDataset):
     """custom Dataset"""
 
     def __init__(self, samples: list, dataset: Dataset, writer: MySummaryWriter = None):
@@ -120,7 +120,7 @@ class CNN1DEmbeddingsDataset(MLDataset):
         return np.shape(first_protein.embedding.tensor)[1]
 
 
-class CNN2DDistMaps(MLDataset):
+class DistMapsDataset(MLDataset):
     """custom Dataset"""
 
     def __init__(self, samples: list, dataset: Dataset, max_length: int, writer: MySummaryWriter = None):
@@ -163,7 +163,7 @@ class CNN2DDistMaps(MLDataset):
         return first_protein.structure.distogram_tensor.shape[2]
 
 
-class CNNCombinedDataset(MLDataset):
+class CombinedV2Dataset(MLDataset):
     """custom Dataset"""
 
     def __init__(self, samples: list, dataset: Dataset, max_length: int, writer: MySummaryWriter = None):
@@ -173,7 +173,8 @@ class CNNCombinedDataset(MLDataset):
         self._num_dist_features = 2
         self._num_emb_features = 1024
 
-        logger.info('Number of input features: {}'.format(self._num_dist_features + self._num_emb_features))
+        logger.info(
+            'Number of input features: {}'.format((self._num_dist_features * max_length) + self._num_emb_features))
 
     def __len__(self):
         return len(self.samples)
