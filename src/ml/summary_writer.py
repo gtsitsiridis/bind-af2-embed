@@ -29,9 +29,10 @@ class MySummaryWriter:
     def add_performance_figures(self, performance: Performance, epoch_id: int = None):
         ligands = BindAnnotation.names()
         figs = []
-        for ligand in ligands:
+        for metric in ['mcc', 'f1', 'rec', 'prec']:
             fig, ax = plt.subplots(2, 1)
-            Plots.plot_performance_table(performance.to_dict(), ax=ax, class_label=ligand)
+            Plots.plot_performance_table(performance.to_dict(), ax=ax, metric=metric,
+                                         class_labels=ligands + ["total", "binding_2"])
             figs.append(fig)
         self._writer.add_figure(tag='performance',
                                 figure=figs,

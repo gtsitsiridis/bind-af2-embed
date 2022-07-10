@@ -58,7 +58,7 @@ class DistMapsModel(torch.nn.Module):
         padding = int((kernel_size - 1) / 2)
         activation = torch.nn.ReLU
 
-        self.conv2 = torch.nn.Sequential(
+        self.conv1 = torch.nn.Sequential(
             torch.nn.Conv2d(in_channels=2, out_channels=feature_channels, kernel_size=(kernel_size, max_length),
                             stride=stride, padding=(padding, 0)),
             activation(),

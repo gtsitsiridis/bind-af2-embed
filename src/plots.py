@@ -230,20 +230,18 @@ class Plots(object):
         ax.legend()
 
     @staticmethod
-    def plot_performance_table(metrics: dict, ax: plt.axes, class_label: str):
-        labels = ['mcc', 'f1', 'rec', 'prec']
-        means = [metrics[label + '_' + class_label] for label in labels]
-        cis = [metrics[label + '_' + class_label + '_ci'] for label in labels]
-        labels = ['MCC', 'F1', 'Recall', 'Precission']
-        results = {labels[i]: f'%0.3f ± %0.2f %%' % (means[i], cis[i]) for i in range(len(labels))}
+    def plot_performance_table(metrics: dict, ax: plt.axes, class_labels: [], metric: str):
+        means = [metrics[metric + '_' + class_label] for class_label in class_labels]
+        cis = [metrics[metric + '_' + class_label + '_ci'] for class_label in class_labels]
+        results = {class_labels[i]: f'%0.3f ± %0.2f %%' % (means[i], cis[i]) for i in range(len(class_labels))}
         df = pd.DataFrame(results, index=[0])
         ax[0].table(cellText=df.values, colLabels=df.columns, loc='center')
-        ax[0].set_title(class_label)
+        ax[0].set_title(metric)
         # hide axes
         ax[0].axis('off')
         ax[0].axis('tight')
 
         # bar plot
-        ax[1].bar(labels, means, yerr=cis, align='center', alpha=0.5, ecolor='black', capsize=10)
+        ax[1].bar(class_labels, means, yerr=cis, align='center', alpha=0.5, ecolor='black', capsize=10)
         ax[1].yaxis.grid(True)
         ax[1].set_ylim([0, 1])

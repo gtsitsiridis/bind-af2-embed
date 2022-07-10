@@ -8,7 +8,6 @@ from datetime import datetime
 from data.dataset import Dataset
 import argparse
 import os
-from ml.method import MethodName
 
 logger = getLogger('app')
 
@@ -63,7 +62,7 @@ def ml_pipeline(method_config: str, config_dir: str = None, log: bool = True):
 def __main():
     parser = argparse.ArgumentParser(description='Trainer')
     parser.add_argument('--config', required=True)
-    parser.add_argument('--method', required=True, choices=['all'] + [method.value for method in MethodName])
+    parser.add_argument('--method', required=True)
     parser.add_argument('--log', action='store_true', default=False)
     args = parser.parse_args()
 
