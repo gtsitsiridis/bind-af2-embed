@@ -76,3 +76,5 @@ class Logging(object):
             fileHandler = logging.FileHandler(file_path)
             fileHandler.setFormatter(formatter)
             logger.addHandler(fileHandler)
+
+

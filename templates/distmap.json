@@ -11,6 +11,7 @@
     },
     "model": {
       "features": 16,
+      "depth": 0,
       "kernel": 5,
       "dropout": 0.7
     },

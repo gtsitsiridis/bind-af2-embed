@@ -16,7 +16,6 @@ from pathlib import Path
 import numpy as np
 from ml.template import RunTemplate
 
-
 logger = getLogger('app')
 
 
@@ -51,11 +50,6 @@ class Pipeline(object):
         log_tracemalloc = self._log_tracemalloc
         num_splits = self._num_splits
 
-        snapshot1 = None
-        if log_tracemalloc:
-            tracemalloc.start()
-            snapshot1 = tracemalloc.take_snapshot()
-
         # Prepare data
         logger.info("Prepare data")
         fold_array = dataset.fold_array
@@ -68,9 +62,10 @@ class Pipeline(object):
         validation_performance_map = PerformanceMap()
         split_counter = 0
         for train_index, validation_index in ps.split():
-            logger.info("Split: " + str(split_counter + 1))
             if split_counter == num_splits:
                 break
+            logger.info("Split: " + str(split_counter + 1))
+
             split_counter += 1
             # Prepare trainer
             logger.info("Prepare trainer")
@@ -86,7 +81,8 @@ class Pipeline(object):
 
             trainer = MLTrainer(dataset=dataset, method=method, template=template, train_writer=train_writer,
                                 val_writer=validation_writer, model_file_path=model_file_path,
-                                performance_file_path=performance_file_path, results_file_path=results_file_path)
+                                performance_file_path=performance_file_path, results_file_path=results_file_path,
+                                log_tracemalloc=self._log_tracemalloc)
 
             # Prepare split run
             train_ids = [prot_ids[train_idx] for train_idx in train_index]
@@ -100,14 +96,6 @@ class Pipeline(object):
             validation_performance_map.append_performance(
                 validation_results_i.get_performance(cutoff=cutoff),
                 tag=f'model_{str(split_counter)}')
-
-            if log_tracemalloc:
-                snapshot2 = tracemalloc.take_snapshot()
-                top_stats = snapshot2.compare_to(snapshot1, 'lineno')
-                mem_stats = "[ Top 10 differences ]\n"
-                for stat in top_stats[:10]:
-                    mem_stats += str(stat) + "\n"
-                logger.warning(mem_stats)
 
         logger.info("Calculating total performance")
         total_validation_performance = validation_results.get_performance(cutoff=cutoff)

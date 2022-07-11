@@ -1,18 +1,16 @@
 from typing import Union, List
 
-import pandas as pd
 import torch
 from pathlib import Path
 from logging import getLogger
 
 from torch import Tensor
 from torch.utils.tensorboard import SummaryWriter
-from ml.common import PerformanceMap, Results, Performance
+from ml.common import Results, Performance
 from plots import Plots
 import matplotlib.pyplot as plt
 import numpy as np
 from data.annotation import BindAnnotation
-from data.dataset import Dataset
 
 logger = getLogger('app')
 

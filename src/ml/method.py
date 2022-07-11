@@ -156,7 +156,7 @@ class DistMapsMethod(Method):
     def _init_model(self) -> torch.nn.Module:
         model_params = self._template.model_params
         return models.DistMapsModel(max_length=self._max_length, feature_channels=model_params['features'],
-                                    kernel_size=model_params['kernel'],
+                                    kernel_size=model_params['kernel'], depth=model_params['depth'],
                                     dropout=model_params['dropout']).to(self.device)
 
     def _init_optimizer(self) -> Optimizer:

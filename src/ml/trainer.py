@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Union, List
-
 from torch import Tensor
 
 from data.dataset import Dataset
@@ -14,6 +12,8 @@ from ml.summary_writer import MySummaryWriter
 import random
 from pathlib import Path
 from enum import Enum
+import tracemalloc
+from hurry.filesize import size as psize
 
 from ml.template import RunTemplate
 
@@ -32,7 +32,8 @@ class MLTrainer(object):
                  val_writer: MySummaryWriter = None,
                  performance_file_path: Path = None,
                  results_file_path: Path = None,
-                 model_file_path: Path = None):
+                 model_file_path: Path = None,
+                 log_tracemalloc: bool = False):
         if torch.cuda.is_available():
             self._device = 'cuda:0'
         else:
@@ -50,6 +51,9 @@ class MLTrainer(object):
         self._mode = TrainMode[template.train_params['train_mode']]
         if self._mode == TrainMode.BINDING:
             self._early_stopping_metric = 'f1_binding'
+        self._log_tracemalloc = log_tracemalloc
+        if log_tracemalloc:
+            tracemalloc.start()
 
     def __call__(self, train_ids: list, validation_ids: list) -> (Results, Results):
         """
@@ -80,12 +84,13 @@ class MLTrainer(object):
         train_results = None
         validation_results = None
         for epoch_id in range(epochs):
+            self._log_memory('started epoch')
             logger.info("Epoch {}".format(epoch_id))
             train_results = self._train_epoch(loader=train_loader,
                                               epoch_id=epoch_id)
             validation_results = self._validate_epoch(loader=validation_loader,
-                                                      epoch_id=epoch_id, log_model=(epoch_id == 0))
-
+                                                      epoch_id=epoch_id)
+            self._log_memory('logging epoch performance')
             # get performance
             epoch_train_performance = train_results.get_performance(cutoff=train_params['cutoff'], is_train=True)
             epoch_validation_performance = validation_results.get_performance(cutoff=train_params['cutoff'],
@@ -112,7 +117,7 @@ class MLTrainer(object):
                                                    epoch_id=epoch_id)
                 if epoch_id % 10 == 0:
                     val_writer.add_protein_results(validation_results, cutoff=train_params['cutoff'], epoch=epoch_id)
-
+            self._log_memory('logged epoch performance')
             # stop training if F1 score doesn't improve anymore
             if early_stopping is not None:
                 eval_val = epoch_validation_performance[self._early_stopping_metric] * (-1)
@@ -134,6 +139,9 @@ class MLTrainer(object):
             General.to_csv(df=validation_results.to_df(cutoff=train_params['cutoff']),
                            filename=self._results_file_path)
 
+        if self._log_tracemalloc:
+            tracemalloc.stop()
+
         return train_results, validation_results
 
     def _train_epoch(self, loader: torch.utils.data.DataLoader,
@@ -145,15 +153,22 @@ class MLTrainer(object):
         # feature_batch.shape=(B, 2*T + 1025, T)
         # target_batch.shape=(B, 3, T)
         # loss_mask_batch.shape=(B, 3, T)
+        self._log_memory('loading train batch')
         for feature_batch, padding_batch, target_batch, loss_mask_batch, prot_ids in loader:
+            self._log_memory('loaded train batch')
             method.optimizer.zero_grad()
             target_batch = target_batch.to(self._device)
             loss_mask_batch = loss_mask_batch.to(self._device)
+            self._log_memory('forward pass')
             pred_batch = method.forward(feature_batch=feature_batch)
+            self._log_memory('done backward pass')
             loss_batch = method.loss(pred_batch=pred_batch, loss_mask_batch=loss_mask_batch, target_batch=target_batch)
             loss_norm = torch.sum(loss_batch)
+            self._log_memory('backward pass')
             loss_norm.backward()
+            self._log_memory('done backward pass')
             method.optimizer.step()
+            self._log_memory('done optmizer')
 
             batch_results = self._batch_results(padding_batch=padding_batch, prot_ids=prot_ids, pred_batch=pred_batch,
                                                 target_batch=target_batch, loss_batch=loss_batch,
@@ -162,17 +177,14 @@ class MLTrainer(object):
         return results
 
     def _validate_epoch(self, loader: torch.utils.data.DataLoader,
-                        epoch_id: int, log_model=False) -> Results:
+                        epoch_id: int) -> Results:
         method = self._method
         method.model.eval()
         results = Results()
-        is_logged = False
+        self._log_memory('loading val batch')
         with torch.no_grad():
             for feature_batch, padding_batch, target_batch, loss_mask_batch, prot_ids in loader:
-                if log_model and not is_logged and self._val_writer is not None:
-                    self._val_writer.add_model(model=method.model, feature_batch=feature_batch)
-                    is_logged = True
-
+                self._log_memory('loaded val batch')
                 target_batch = target_batch.to(self._device)
                 loss_mask_batch = loss_mask_batch.to(self._device)
                 pred_batch = method.forward(feature_batch=feature_batch)
@@ -202,6 +214,13 @@ class MLTrainer(object):
             batch_results[prot_id] = result
 
         return batch_results
+
+    def _log_memory(self, state: str):
+        if self._log_tracemalloc:
+            size, peak = tracemalloc.get_traced_memory()
+            tracemalloc.reset_peak()
+            logger.debug("Memory state: " + state)
+            logger.debug(f"{psize(size)=}, {psize(peak)=}")
 
 
 class MyWorkerInit(object):

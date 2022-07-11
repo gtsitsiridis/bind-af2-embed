@@ -42,8 +42,8 @@
       }
     },
     "params": {
-      "num_cross_splits": 5,
-      "subset": 2,
+      "num_cross_splits": 1,
+      "subset": -1,
       "plddt_limit": 70,
       "max_length": 540,
       "min_length": -1
@@ -52,7 +52,7 @@
   "templates": "../templates/",
   "output": "../data/output/",
   "log": {
-    "tracemalloc": false,
+    "tracemalloc": true,
     "path": "../logs/",
     "loggers": {
       "app": {
