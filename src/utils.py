@@ -1,5 +1,5 @@
 import logging
-from config import AppConfig
+from config import LoggingConfig
 from pathlib import Path
 from logging import getLogger
 
@@ -20,7 +20,6 @@ class FileUtils(object):
         """
 
         :param splits_ids_files:
-        :param subset:
         :return:
         """
         ids = []
@@ -59,11 +58,10 @@ class FileUtils(object):
 
 class Logging(object):
     @staticmethod
-    def setup_app_logger(config: AppConfig, write: bool = False):
-        log_config = config.get_log()
-        assert log_config['loggers']['app']['level'], 'level has not been defined in the app logger configuration'
+    def setup_app_logger(config: LoggingConfig, write: bool = False):
+        assert config.loggers['app']['level'], 'level has not been defined in the app logger configuration'
 
-        level = log_config['loggers']['app']['level']
+        level = config.loggers['app']['level']
 
         logger = logging.getLogger('app')
         logger.setLevel(level)
@@ -74,8 +72,7 @@ class Logging(object):
         logger.addHandler(consoleHandler)
 
         if write:
-            assert log_config['path'], 'path has not been defined in the log configuration'
-            file_path = Path(log_config['path']) / 'app.log'
+            file_path = Path(config.path) / 'app.log'
             fileHandler = logging.FileHandler(file_path)
             fileHandler.setFormatter(formatter)
             logger.addHandler(fileHandler)

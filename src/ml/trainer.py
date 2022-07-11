@@ -15,6 +15,8 @@ import random
 from pathlib import Path
 from enum import Enum
 
+from ml.template import RunTemplate
+
 logger = getLogger('app')
 
 
@@ -25,7 +27,7 @@ class TrainMode(Enum):
 
 class MLTrainer(object):
 
-    def __init__(self, dataset: Dataset, method: Method, ml_params: dict,
+    def __init__(self, dataset: Dataset, method: Method, template: RunTemplate,
                  train_writer: MySummaryWriter = None,
                  val_writer: MySummaryWriter = None,
                  performance_file_path: Path = None,
@@ -38,14 +40,14 @@ class MLTrainer(object):
 
         self._dataset = dataset
         self._method = method
-        self._ml_params = ml_params
+        self._train_params = template.train_params
         self._train_writer = train_writer
         self._val_writer = val_writer
         self._performance_file_path = performance_file_path
         self._model_file_path = model_file_path
         self._results_file_path = results_file_path
         self._early_stopping_metric = 'f1_total'
-        self._mode = TrainMode[ml_params['train_mode']]
+        self._mode = TrainMode[template.train_params['train_mode']]
         if self._mode == TrainMode.BINDING:
             self._early_stopping_metric = 'f1_binding'
 
@@ -57,17 +59,16 @@ class MLTrainer(object):
         :return: train and validation results of last epoch
         """
         method = self._method
-        ml_params = self._ml_params
         train_writer = self._train_writer
         val_writer = self._val_writer
+        train_params = self._train_params
 
-        epochs = ml_params['epochs']
-        batch_size = ml_params['batch_size']
+        epochs = train_params['epochs']
+        batch_size = train_params['batch_size']
         early_stopping = None
-        if ml_params['early_stopping']:
-            assert 'early_stopping_patience' in ml_params, 'early_stopping_patience needs to be configured' \
-                                                           ' to use early stopping'
-            early_stopping = EarlyStopping(patience=ml_params['early_stopping_patience'], delta=0.01)
+        if train_params['early_stopping']:
+            early_stopping = EarlyStopping(patience=train_params.get('early_stopping_patience', 10),
+                                           delta=0.01)
 
         train_set = method.get_dataset(ids=train_ids, writer=train_writer)
         validation_set = method.get_dataset(ids=validation_ids, writer=val_writer)
@@ -86,8 +87,9 @@ class MLTrainer(object):
                                                       epoch_id=epoch_id, log_model=(epoch_id == 0))
 
             # get performance
-            epoch_train_performance = train_results.get_performance(cutoff=ml_params['cutoff'], is_train=True)
-            epoch_validation_performance = validation_results.get_performance(cutoff=ml_params['cutoff'], is_train=True)
+            epoch_train_performance = train_results.get_performance(cutoff=train_params['cutoff'], is_train=True)
+            epoch_validation_performance = validation_results.get_performance(cutoff=train_params['cutoff'],
+                                                                              is_train=True)
 
             performance_map.append_performance(performance=epoch_train_performance,
                                                tag=f'train_epoch_{str(epoch_id)}')
@@ -104,12 +106,12 @@ class MLTrainer(object):
                 train_writer.add_performance_scalars(performance=epoch_train_performance,
                                                      epoch_id=epoch_id)
                 if epoch_id % 10 == 0:
-                    train_writer.add_protein_results(train_results, cutoff=ml_params['cutoff'], epoch=epoch_id)
+                    train_writer.add_protein_results(train_results, cutoff=train_params['cutoff'], epoch=epoch_id)
             if val_writer is not None:
                 val_writer.add_performance_scalars(performance=epoch_validation_performance,
                                                    epoch_id=epoch_id)
                 if epoch_id % 10 == 0:
-                    val_writer.add_protein_results(validation_results, cutoff=ml_params['cutoff'], epoch=epoch_id)
+                    val_writer.add_protein_results(validation_results, cutoff=train_params['cutoff'], epoch=epoch_id)
 
             # stop training if F1 score doesn't improve anymore
             if early_stopping is not None:
@@ -129,7 +131,7 @@ class MLTrainer(object):
             General.to_csv(df=performance_map.to_df(),
                            filename=self._performance_file_path)
         if self._results_file_path is not None:
-            General.to_csv(df=validation_results.to_df(cutoff=ml_params['cutoff']),
+            General.to_csv(df=validation_results.to_df(cutoff=train_params['cutoff']),
                            filename=self._results_file_path)
 
         return train_results, validation_results

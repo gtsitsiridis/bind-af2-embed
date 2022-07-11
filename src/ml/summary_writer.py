@@ -26,6 +26,13 @@ class MySummaryWriter:
         for key in performance.keys():
             writer.add_scalar(key, performance[key], epoch_id)
 
+    def add_hparams(self, hparams: dict, performance: Performance):
+        writer = self._writer
+        # order metrics alphabetically
+        metrics_ordered = dict(sorted(performance.to_dict().copy().items(), key=lambda x: x[0]))
+
+        writer.add_hparams(hparam_dict=hparams, metric_dict=metrics_ordered)
+
     def add_performance_figures(self, performance: Performance, epoch_id: int = None):
         ligands = BindAnnotation.names()
         figs = []

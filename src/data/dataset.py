@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 from typing import Dict
 from utils import FileUtils
-from config import AppConfig
+from config import InputConfig
 from data.protein import Protein, ProteinStructure, BindAnnotation, Sequence, Embedding
 from logging import getLogger
 import statistics
@@ -13,6 +13,8 @@ logger = getLogger('app')
 
 
 class Dataset(object):
+    """This object contains a dictionary of all protein objects and useful methods to manipulate them."""
+
     def __init__(self, proteins: Dict[str, Protein], fold_array: list, embedding_size: int):
         self._proteins = proteins
         self._fold_array = fold_array
@@ -21,31 +23,20 @@ class Dataset(object):
         logger.info("Number of proteins: " + str(len(self)))
 
     @staticmethod
-    def dataset_from_config(config: AppConfig, mode: str = 'all', subset: int = -1) -> Dataset:
+    def full_dataset(config: InputConfig) -> Dataset:
         """
-        This object contains a dictionary of all protein objects and useful methods to manipulate them.
-        :param plddt_limit:
         :param config:
-        :param subset: How many random proteins to include in the dataset.
-        If subset = -1 then all the proteins are included.
-        :param mode: one of ["train", "all", "test"]
         """
+        files = config.files
+
         proteins: Dict[str, Protein]
         fold_array: list
         prot_ids: list
         embedding_size: int
 
-        files = config.get_input()
+        logger.info(f"Reading data")
 
-        assert mode in {'train', 'test', 'all'}, 'mode should be one of ["train", "all", "test"]'
-
-        logger.info(f"Reading {mode} data")
-
-        split_ids_files: list
-        if mode in {'train', 'test'}:
-            split_ids_files = files['splits'][mode]
-        else:
-            split_ids_files = files['splits']['train'] + files['splits']['test']
+        split_ids_files = files['splits']['train'] + files['splits']['test']
 
         logger.info("reading splits")
         prot_ids, fold_array = FileUtils.read_split_ids(split_ids_files)
@@ -74,16 +65,6 @@ class Dataset(object):
                 to_remove.append(prot_id)
                 continue
 
-            if subset > 0:
-                split_id = fold_array[idx]
-                if split_id in splits_size_dict.keys():
-                    if splits_size_dict[split_id] == subset:
-                        to_remove.append(prot_id)
-                        continue
-                    splits_size_dict[split_id] += 1
-                else:
-                    splits_size_dict[split_id] = 1
-
             proteins[prot_id] = Protein(prot_id=prot_id, sequence=seq,
                                         bind_annotation=bind_annot,
                                         embedding=embed,
@@ -97,11 +78,19 @@ class Dataset(object):
 
         return Dataset(proteins=proteins, fold_array=fold_array, embedding_size=embedding_size)
 
-    def get_subset(self, config: AppConfig, mode: str, subset: int = None,
-                   plddt_limit: int = 70, max_length: int = None, min_length: int = None) -> Dataset:
+    def get_subset(self, config: InputConfig, mode: str) -> Dataset:
+        """
+        :param config:
+        :param mode: one of ["train", "all", "test"]
+        :return:
+        """
         assert mode in {'train', 'test'}, 'mode should be one of ["train", "test"]'
+        max_length = config.params.get('max_length', None)
+        min_length = config.params.get('min_length', None)
+        subset = config.params.get('subset', None)
+        plddt_limit = config.params.get('subset', None)
 
-        files = config.get_input()['splits'][mode]
+        files = config.files['splits'][mode]
         split_ids = [file['id'] for file in files]
         proteins: Dict[str, Protein] = dict()
         fold_array: list = list()
@@ -114,7 +103,7 @@ class Dataset(object):
             fold = self.fold_array[idx]
             if fold not in split_ids:
                 continue
-            if np.mean(protein.structure.plddt_tensor) < plddt_limit:
+            if plddt_limit is not None and np.mean(protein.structure.plddt_tensor) < plddt_limit:
                 continue
             if max_length is not None and (0 < max_length < len(protein)):
                 continue
@@ -228,19 +217,19 @@ class Dataset(object):
 
         return df, reduced_embeddings
 
-    def summary(self) -> str:
+    def summary(self) -> dict:
         prot_length = [len(prot) for prot in self.proteins.values()]
         plddt = [prot.structure.plddt_tensor for prot in self.proteins.values()]
         plddt = np.concatenate(plddt)
+        result = {
+            "num_prot": len(self),
+            "mean_prot_length": statistics.mean(prot_length),
+            "min_prot_length": min(prot_length),
+            "max_prot_length": max(prot_length),
+            "mean_plddt": statistics.mean(plddt),
+        }
 
-        return f'''
-        Summary:
-        Num of proteins: {str(len(self))};
-        Mean protein length: {str(statistics.mean(prot_length))};
-        Min protein length: {str(min(prot_length))};
-        Max protein length: {str(max(prot_length))};
-        Mean plddt: {str(statistics.mean(plddt))};
-        '''
+        return result
 
     def long_data(self) -> (pd.DataFrame, Dict[str, np.array]):
         """

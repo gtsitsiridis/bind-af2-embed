@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from enum import Enum
-
 from torch import Tensor
 from torch.nn.modules.loss import _Loss
 from torch.optim import Optimizer
@@ -14,36 +12,15 @@ from abc import ABCMeta, abstractmethod
 from typing import List, Union
 from ml.summary_writer import MySummaryWriter
 from logging import getLogger
+from ml.template import MethodName, RunTemplate
 
 logger = getLogger('app')
 
 
-class MethodName(Enum):
-    EMBEDDINGS = "EMBEDDINGS"
-    DISTMAPS = "DISTMAPS"
-    COMBINED_V1 = "COMBINED_V1"
-    COMBINED_V2 = "COMBINED_V2"
-
-    @classmethod
-    def method(cls, method_params: dict, dataset: Dataset, max_length: int) -> Method:
-        name = MethodName[method_params["name"]]
-
-        if name == cls.EMBEDDINGS:
-            return EmbeddingsMethod(dataset=dataset, params=method_params)
-        elif name == cls.DISTMAPS:
-            return DistMapsMethod(dataset=dataset, params=method_params, max_length=max_length)
-        if name == cls.COMBINED_V1:
-            return CombinedV1Method(dataset=dataset, params=method_params, max_length=max_length)
-        elif name == cls.COMBINED_V2:
-            return CombinedV2Method(dataset=dataset, params=method_params, max_length=max_length)
-        else:
-            assert False, f"The method {name.name} has not been defined yet."
-
-
 class Method(metaclass=ABCMeta):
-    def __init__(self, params: dict, dataset: Dataset):
-        self._params = params
-        self._name = MethodName[params['name']]
+    def __init__(self, template: RunTemplate, dataset: Dataset):
+        self._template = template
+        self._name = template.method_name
         self._dataset = dataset
         if torch.cuda.is_available():
             self.device = 'cuda:0'
@@ -53,6 +30,21 @@ class Method(metaclass=ABCMeta):
         self._model = self._init_model()
         self._optimizer = self._init_optimizer()
         self._loss = self._init_loss()
+
+    @staticmethod
+    def get_method(template: RunTemplate, dataset: Dataset, max_length: int) -> Method:
+        name = template.method_name
+
+        if name == MethodName.EMBEDDINGS:
+            return EmbeddingsMethod(dataset=dataset, template=template)
+        elif name == MethodName.DISTMAPS:
+            return DistMapsMethod(dataset=dataset, template=template, max_length=max_length)
+        if name == MethodName.COMBINED_V1:
+            return CombinedV1Method(dataset=dataset, template=template, max_length=max_length)
+        elif name == MethodName.COMBINED_V2:
+            return CombinedV2Method(dataset=dataset, template=template, max_length=max_length)
+        else:
+            assert False, f"The method {name.name} has not been defined yet."
 
     @property
     def name(self):
@@ -105,17 +97,18 @@ class Method(metaclass=ABCMeta):
         pass
 
     @staticmethod
-    def _init_BCEWithLogits_loss(params: dict, device: str, max_length: int) -> _Loss:
-        pos_weights = torch.tensor(params["pos_weights"]).to(device)
-        assert len(params['pos_weights']) == 4, \
+    def _init_BCEWithLogits_loss(template: RunTemplate, device: str, max_length: int) -> _Loss:
+        loss_params = template.loss_params
+        pos_weights = torch.tensor(loss_params["pos_weights"]).to(device)
+        assert len(loss_params['pos_weights']) == 4, \
             'the param pos_weights should have a length of 4'
         # weight is used to mute other ligands (e.g. 0,0,0,1 to test binding vs non-binding)
         weight = None
-        if 'weight' in params:
-            assert len(params['weight']) == 4, \
+        if 'weight' in loss_params:
+            assert len(loss_params['weight']) == 4, \
                 'the param weights should have a length of 4'
             logger.warning("Custom weights have been passed to the BCE loss!")
-            weight = torch.tensor(params['weight']).to(device)
+            weight = torch.tensor(loss_params['weight']).to(device)
             weight = weight.expand(max_length, 4)
             weight = weight.t()
 
@@ -127,72 +120,73 @@ class Method(metaclass=ABCMeta):
         return torch.nn.BCEWithLogitsLoss(reduction='none', pos_weight=pos_weights, weight=weight)
 
     @staticmethod
-    def _init_adamax_optimizer(params: dict, model: torch.nn.Module):
-        optim_args = {'lr': params['lr'], 'betas': (0.9, 0.999), 'eps': params['eps'],
-                      'weight_decay': params['weight_decay']}
+    def _init_adamax_optimizer(template: RunTemplate, model: torch.nn.Module):
+        optimizer_params = template.optimizer_params
+        optim_args = {'lr': optimizer_params['lr'], 'betas': (0.9, 0.999), 'eps': optimizer_params['eps'],
+                      'weight_decay': optimizer_params['weight_decay']}
         return torch.optim.Adamax(model.parameters(), **optim_args)
 
 
 class EmbeddingsMethod(Method):
-    def __init__(self, params: dict, dataset: Dataset):
+    def __init__(self, template: RunTemplate, dataset: Dataset):
         self._max_length = dataset.determine_max_length()
         self._embedding_size = dataset.embedding_size
-        super().__init__(params, dataset=dataset)
+        super().__init__(template, dataset=dataset)
 
     def _init_model(self) -> torch.nn.Module:
-        params = self._params
-        return models.EmbeddingsModel(params['features'], params['kernel'], params['dropout']).to(
+        model_params = self._template.model_params
+        return models.EmbeddingsModel(model_params['features'], model_params['kernel'], model_params['dropout']).to(
             self.device)
 
     def _init_optimizer(self) -> Optimizer:
-        return self._init_adamax_optimizer(params=self._params, model=self.model)
+        return self._init_adamax_optimizer(template=self._template, model=self.model)
 
     def _init_loss(self) -> _Loss:
-        return self._init_BCEWithLogits_loss(params=self._params, device=self.device, max_length=self._max_length)
+        return self._init_BCEWithLogits_loss(template=self._template, device=self.device, max_length=self._max_length)
 
     def get_dataset(self, ids: list, writer: MySummaryWriter = None) -> torch.utils.data.Dataset:
         return datasets.EmbeddingsDataset(ids, self._dataset)
 
 
 class DistMapsMethod(Method):
-    def __init__(self, params: dict, dataset: Dataset, max_length: int):
+    def __init__(self, template: RunTemplate, dataset: Dataset, max_length: int):
         self._max_length = max_length
-        super().__init__(params, dataset=dataset)
+        super().__init__(template, dataset=dataset)
 
     def _init_model(self) -> torch.nn.Module:
-        params = self._params
-        return models.DistMapsModel(max_length=self._max_length, feature_channels=params['features'],
-                                    kernel_size=params['kernel'],
-                                    dropout=params['dropout']).to(self.device)
+        model_params = self._template.model_params
+        return models.DistMapsModel(max_length=self._max_length, feature_channels=model_params['features'],
+                                    kernel_size=model_params['kernel'],
+                                    dropout=model_params['dropout']).to(self.device)
 
     def _init_optimizer(self) -> Optimizer:
-        return self._init_adamax_optimizer(params=self._params, model=self.model)
+        return self._init_adamax_optimizer(template=self._template, model=self.model)
 
     def _init_loss(self) -> _Loss:
-        return self._init_BCEWithLogits_loss(params=self._params, device=self.device, max_length=self._max_length)
+        return self._init_BCEWithLogits_loss(template=self._template, device=self.device, max_length=self._max_length)
 
     def get_dataset(self, ids: list, writer: MySummaryWriter = None) -> torch.utils.data.Dataset:
         return datasets.DistMapsDataset(ids, self._dataset, writer=writer, max_length=self._max_length)
 
 
 class CombinedV1Method(Method):
-    def __init__(self, params: dict, dataset: Dataset, max_length: int):
+    def __init__(self, template: RunTemplate, dataset: Dataset, max_length: int):
         self._max_length = max_length
         self._embedding_size = dataset.embedding_size
-        super().__init__(params, dataset=dataset)
+        super().__init__(template, dataset=dataset)
 
     def _init_model(self) -> torch.nn.Module:
-        params = self._params
+        model_params = self._template.model_params
         input_dimensions = 2 * self._max_length + self._embedding_size
-        return models.CombinedModelV1(input_dimensions, params['features'], params['kernel'], params['dropout']).to(
+        return models.CombinedModelV1(input_dimensions, model_params['features'], model_params['kernel'],
+                                      model_params['dropout']).to(
             self.device)
 
     def _init_optimizer(self) -> Optimizer:
-        return self._init_adamax_optimizer(params=self._params, model=self.model)
+        return self._init_adamax_optimizer(template=self._template, model=self.model)
 
     def _init_loss(self) -> _Loss:
-        return self._init_BCEWithLogits_loss(params=self._params, device=self.device,
-                                             max_length=self._max_length)
+        return self._init_BCEWithLogits_loss(template=self._template, device=self.device, max_length=self._max_length)
 
     def get_dataset(self, ids: list, writer: MySummaryWriter = None) -> torch.utils.data.Dataset:
         return datasets.CombinedV1Dataset(ids, self._dataset, max_length=self._max_length,
@@ -200,22 +194,23 @@ class CombinedV1Method(Method):
 
 
 class CombinedV2Method(Method):
-    def __init__(self, params: dict, dataset: Dataset, max_length: int):
+    def __init__(self, template: RunTemplate, dataset: Dataset, max_length: int):
         self._max_length = max_length
-        super().__init__(params, dataset=dataset)
+        super().__init__(template, dataset=dataset)
 
     def _init_model(self) -> torch.nn.Module:
-        params = self._params
-        return models.CombinedModelV2(max_length=self._max_length, emb_feature_channels=params['emb_features'],
-                                      distmap_depth=params['distmap_depth'],
-                                      distmap_feature_channels=params['distmap_features'],
-                                      kernel_size=params['kernel'], dropout=params['dropout']).to(self.device)
+        model_params = self._template.model_params
+        return models.CombinedModelV2(max_length=self._max_length, emb_feature_channels=model_params['emb_features'],
+                                      distmap_depth=model_params['distmap_depth'],
+                                      distmap_feature_channels=model_params['distmap_features'],
+                                      kernel_size=model_params['kernel'], dropout=model_params['dropout']).to(
+            self.device)
 
     def _init_optimizer(self) -> Optimizer:
-        return self._init_adamax_optimizer(params=self._params, model=self.model)
+        return self._init_adamax_optimizer(template=self._template, model=self.model)
 
     def _init_loss(self) -> _Loss:
-        return self._init_BCEWithLogits_loss(params=self._params, device=self.device, max_length=self._max_length)
+        return self._init_BCEWithLogits_loss(template=self._template, device=self.device, max_length=self._max_length)
 
     def get_dataset(self, ids: list, writer: MySummaryWriter = None) -> torch.utils.data.Dataset:
         return datasets.CombinedV2Dataset(ids, self._dataset, writer=writer, max_length=self._max_length)
