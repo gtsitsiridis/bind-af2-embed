@@ -42,14 +42,12 @@ class MLPredictor(object):
         i = 0
         # batch size is 1
         for features, padding, target, loss_mask, prot_id in validation_loader:
-            if i == 0 and writer is not None:
-                writer.add_model(model=method.model, feature_batch=features)
-            i += 1
-
             prot_id = prot_id[0]
-
             method.model.eval()
             with torch.no_grad():
+                if i == 0 and writer is not None:
+                    writer.add_model(model=method.model, feature_batch=features)
+                i += 1
                 target = target.to(self.device)
                 loss_mask = loss_mask.to(self.device)
                 pred = method.forward(feature_batch=features)

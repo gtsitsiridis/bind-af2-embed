@@ -3,9 +3,9 @@ import ml.models as ml_models
 
 
 def combinedv2():
-    batch_size = 400
+    batch_size = 50
     print("Summary")
-    for depth in [0, 1, 2, 3, 4]:
+    for depth in [0, 1, 2]:
         print('depth: ' + str(depth))
         distmap_model = ml_models.CNN2DModel(feature_channels=8, depth=depth, kernel_size=5, dropout=0.7,
                                              max_length=540)

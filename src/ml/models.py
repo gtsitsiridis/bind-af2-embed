@@ -46,7 +46,7 @@ class CNN2DModel(torch.nn.Module):
         padding = int((kernel_size - 1) / 2)
         activation = torch.nn.ReLU
 
-        self.convs = []
+        self.convs = torch.nn.ModuleList()
         distmap_in_channels = 2
         for i in range(depth):
             self.convs.append(torch.nn.Sequential(
