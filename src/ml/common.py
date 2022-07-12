@@ -229,7 +229,7 @@ class Performance(object):
         return self._metrics[item]
 
     def to_str(self, tag: str) -> str:
-        return "Loss: {:.3f}, Prec: {:.3f}, Recall: {:.3f}, F1: {:.3f}, MCC: {:.3f}".format(self["loss_" + tag],
+        return "Loss: {:.3f}, Prec: {:.3f}, Recall: {:.3f}, F1: {:.3f}, MCC: {:.3f}".format(self["loss_total"],
                                                                                             self["prec_" + tag],
                                                                                             self["rec_" + tag],
                                                                                             self["f1_" + tag],
