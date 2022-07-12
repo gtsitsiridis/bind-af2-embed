@@ -10,22 +10,26 @@ from ml.template import RunTemplate
 logger = getLogger('app')
 
 
-def train_test(config: AppConfig, template: RunTemplate, train_dataset: Dataset, test_dataset: Dataset,
-               max_length: int):
-    tag = f'{datetime.now().strftime("%Y%m%d%H%M")}_{template.name}'
+def train(tag: str, config: AppConfig, template: RunTemplate, dataset: Dataset):
     logger.info(f'Tag {tag}')
     logger.info(str(template))
 
-    pipeline = Pipeline(tag=tag, config=config, template=template, max_length=max_length, train_dataset=train_dataset,
-                        test_dataset=test_dataset)
+    pipeline = Pipeline(tag=tag, config=config, template=template, dataset=dataset)
 
     logger.info("Starting training")
     pipeline.cross_training()
-    logger.info("Training done")
+    logger.info(f"Tag {tag}: Training done")
+
+
+def run_test(tag: str, config: AppConfig, template: RunTemplate, dataset: Dataset):
+    logger.info(f'Tag {tag}')
+    logger.info(str(template))
+
+    pipeline = Pipeline(tag=tag, config=config, template=template, dataset=dataset)
 
     logger.info("Starting testing")
     pipeline.testing()
-    logger.info("Evaluation done")
+    logger.info(f"Tag {tag}:Evaluation done")
 
 
 def init_app(config_file: str, log: bool) -> AppConfig:
@@ -36,39 +40,47 @@ def init_app(config_file: str, log: bool) -> AppConfig:
     return config
 
 
-def init_dataset(config: InputConfig) -> (Dataset, Dataset, int):
+def init_dataset(config: InputConfig, test: bool = False) -> Dataset:
     full_dataset = Dataset.full_dataset(config)
     logger.info("Total dataset:" + str(full_dataset.summary()))
-    test_dataset = full_dataset.get_subset(mode='test', config=config)
-    train_dataset = full_dataset.get_subset(mode='train', config=config)
+    if test:
+        dataset = full_dataset.get_subset(mode='test', config=config)
+    else:
+        dataset = full_dataset.get_subset(mode='train', config=config)
 
-    logger.info("Test dataset:" + str(test_dataset.summary()))
-    logger.info("Train dataset:" + str(train_dataset.summary()))
-    logger.info("Filtered proteins: " + str(len(full_dataset) - len(train_dataset) - len(test_dataset)))
-    max_length = max(test_dataset.determine_max_length(), train_dataset.determine_max_length())
-    del full_dataset
-
-    return train_dataset, test_dataset, max_length
+    logger.info("Dataset:" + str(dataset.summary()))
+    return dataset
 
 
 def __main():
     parser = argparse.ArgumentParser(description='Trainer')
     parser.add_argument('--config', required=False)
     parser.add_argument('--template', required=True)
+    parser.add_argument('--tag', required=False)
+    parser.add_argument('--test', action='store_true', default=False)
     parser.add_argument('--log', action='store_true', default=False)
     args = parser.parse_args()
 
     config = init_app(config_file=args.config, log=args.log)
-    train_dataset, test_dataset, max_length = init_dataset(config=config.input)
+
+    def _run(_template):
+        tag = args.tag
+        if args.test:
+            assert tag is not None, "You need to provide the tag of a trained model to test."
+            dataset = init_dataset(config=config.input, test=True)
+            run_test(tag=tag, config=config, template=_template, dataset=dataset)
+        else:
+            if tag is None:
+                tag = f'{datetime.now().strftime("%Y%m%d%H%M")}_{_template.name}'
+            dataset = init_dataset(config=config.input)
+            train(tag=tag, config=config, template=_template, dataset=dataset)
 
     if args.template == 'all':
         for template in config.iter_templates():
-            train_test(config=config, template=template, train_dataset=train_dataset, test_dataset=test_dataset,
-                       max_length=max_length)
+            _run(template)
     else:
         template = config.resolve_template(args.template)
-        train_test(config=config, template=template, train_dataset=train_dataset, test_dataset=test_dataset,
-                   max_length=max_length)
+        _run(template)
 
 
 if __name__ == '__main__':

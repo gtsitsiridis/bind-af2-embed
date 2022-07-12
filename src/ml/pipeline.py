@@ -10,7 +10,6 @@ from ml.predictor import MLPredictor
 from sklearn.model_selection import PredefinedSplit
 import ml.method as ml_method
 from ml.summary_writer import MySummaryWriter
-import tracemalloc
 from ml.common import General, PerformanceMap, Results, Performance
 from pathlib import Path
 import numpy as np
@@ -21,12 +20,10 @@ logger = getLogger('app')
 
 class Pipeline(object):
 
-    def __init__(self, config: AppConfig, template: RunTemplate, train_dataset: Dataset, test_dataset: Dataset,
-                 max_length: int, tag: str):
+    def __init__(self, config: AppConfig, template: RunTemplate, dataset: Dataset, tag: str):
         self._template = template
-        self._train_dataset = train_dataset
-        self._test_dataset = test_dataset
-        self._max_length = max_length
+        self._dataset = dataset
+        self._max_length = config.input.params['max_length']
         self._log_tracemalloc = config.log.tracemalloc
 
         self._num_splits = config.input.params.get("num_cross_splits", 5)
@@ -41,13 +38,12 @@ class Pipeline(object):
 
     def cross_training(self) -> Results:
         cutoff = self._template.train_params.get('cutoff', 0.5)
-        dataset = self._train_dataset
+        dataset = self._dataset
         model_dir = self._model_dir
         stats_dir = self._stats_dir
         predictions_dir = self._predictions_dir
         template = self._template
         max_length = self._max_length
-        log_tracemalloc = self._log_tracemalloc
         num_splits = self._num_splits
 
         # Prepare data
@@ -113,7 +109,7 @@ class Pipeline(object):
 
     def testing(self) -> Results:
         logger.info("Prepare data")
-        dataset = self._test_dataset
+        dataset = self._dataset
         model_dir = self._model_dir
         stats_dir = self._stats_dir
         predictions_dir = self._predictions_dir
@@ -188,15 +184,12 @@ class Pipeline(object):
     def log_hparams(self, performance: Performance, writer: MySummaryWriter):
         model_dir = self._model_dir
         template = self._template
-        train_dataset_stats = {"train_" + k: v for k, v in self._train_dataset.summary().items()}
-        test_dataset_stats = {"test_" + k: v for k, v in self._test_dataset.summary().items()}
 
         hparams = {"num_splits": self._num_splits}
         hparams.update(template.optimizer_params)
         hparams.update(template.model_params)
         hparams.update(template.train_params)
-        hparams.update(train_dataset_stats)
-        hparams.update(test_dataset_stats)
+        hparams.update(self._dataset.summary().items())
 
         # flatten loss params
         loss_params = template.loss_params.copy()
