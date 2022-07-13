@@ -1,0 +1,12 @@
+run,model,train_mode,data_type,pLDDT_filter,prot_length_filter
+202207120223_combinedv1,combinedv1,ligand,combined,70,540
+202207121401_combinedv2_1,combinedv2_1,ligand,combined,70,540
+202207121144_combinedv2_2,combinedv2_2,ligand,combined,70,540
+202207121728_combinedv2_2_bind,combinedv2_2_bind,binding,combined,70,540
+202207120217_distmapv1,distmapv1,ligand,distmap,70,540
+202207120138_distmapv2,distmapv2,ligand,distmap,70,540
+202207121620_distmapv2_bind,distmapv2_bind,binding,distmap,70,540
+202207121113_embedding,embedding,ligand,embedding,70,540
+202207131333_embedding,embedding,ligand,embedding,70,811
+202207131414_embedding,embedding,ligand,embedding,0,811
+202207122348_embedding_bind,embedding_bind,binding,embedding,70,540
