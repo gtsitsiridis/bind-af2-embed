@@ -145,7 +145,7 @@ class EmbeddingsMethod(Method):
         return self._init_BCEWithLogits_loss(template=self._template, device=self.device, max_length=self._max_length)
 
     def get_dataset(self, ids: list, writer: MySummaryWriter = None) -> torch.utils.data.Dataset:
-        return datasets.EmbeddingsDataset(ids, self._dataset)
+        return datasets.EmbeddingsDataset(ids, self._dataset, writer=writer)
 
 
 class DistMapsMethod(Method):
@@ -189,7 +189,7 @@ class CombinedV1Method(Method):
         return self._init_BCEWithLogits_loss(template=self._template, device=self.device, max_length=self._max_length)
 
     def get_dataset(self, ids: list, writer: MySummaryWriter = None) -> torch.utils.data.Dataset:
-        return datasets.CombinedV1Dataset(ids, self._dataset, max_length=self._max_length,
+        return datasets.CombinedV1Dataset(ids, self._dataset, max_length=self._max_length, writer=writer,
                                           embedding_size=self._embedding_size)
 
 
