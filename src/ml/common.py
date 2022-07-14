@@ -236,8 +236,8 @@ class Performance(object):
                                                                                             self["mcc_" + tag])
 
     @staticmethod
-    def calc_performance_measurements(df: pd.DataFrame, tag: str, is_train: bool,
-                                      ligand_check: bool = True) -> dict:
+    def get_performance_measurements(df: pd.DataFrame, tag: str, is_train: bool,
+                                     ligand_check: bool = True) -> dict:
         """Calculate precision, recall, f1, mcc, and accuracy"""
         columns = {'prot_id', 'position', 'prediction', 'target', 'ligand'}
         assert columns.issubset(set(df.columns)), \
@@ -263,7 +263,7 @@ class Performance(object):
 
         if is_train:
             # if in train mode, calculate stats based on all values (don't group per protein)
-            metrics.update(Performance._calc_performance_measurements(df, tag=tag))
+            metrics.update(Performance.calc_performance_measurements(df, tag=tag))
         else:
             # covonebind
             df1 = df.groupby('prot_id')[['prediction', 'target']].sum()
@@ -271,7 +271,7 @@ class Performance(object):
 
             # get protein based measurements
             metrics_df = df.groupby('prot_id'). \
-                apply(lambda df_prot: pd.Series(Performance._calc_performance_measurements(df_prot, tag=tag)))
+                apply(lambda df_prot: pd.Series(Performance.calc_performance_measurements(df_prot, tag=tag)))
 
             # means with CI
             metrics_df = metrics_df.apply(lambda metric: pd.Series(get_mean_ci(metric)), axis=0)
@@ -284,7 +284,7 @@ class Performance(object):
         return metrics
 
     @staticmethod
-    def _calc_performance_measurements(df: pd.DataFrame, tag: str) -> dict:
+    def calc_performance_measurements(df: pd.DataFrame, tag: str) -> dict:
         columns = {'prot_id', 'target', 'prediction'}
         assert columns.issubset(set(df.columns)), \
             'the dataframe should include the following columns: ' + str(columns) + ". Given: " + str(df.columns)
@@ -371,13 +371,13 @@ class Performance(object):
         # ligand metrics
         for ligand in ligands:
             metrics.update(
-                Performance.calc_performance_measurements(df=df[df.ligand == ligand], tag=ligand, is_train=is_train))
+                Performance.get_performance_measurements(df=df[df.ligand == ligand], tag=ligand, is_train=is_train))
 
         # total metrics (used for training)
         metrics['loss_total'] = df.loss.mean()
         # all predictions (including different ligands)
-        metrics.update(Performance.calc_performance_measurements(df=df, tag='total', is_train=is_train,
-                                                                 ligand_check=False))
+        metrics.update(Performance.get_performance_measurements(df=df, tag='total', is_train=is_train,
+                                                                ligand_check=False))
 
         # these metrics will slow down the training
         if not is_train:
@@ -389,7 +389,7 @@ class Performance(object):
             df_merged = df[df.ligand.isin(ligands_nobinding)].groupby(['prot_id', 'position'])[
                 ['prediction', 'target']].max().reset_index()
             df_merged['ligand'] = 'binding'
-            metrics.update(Performance.calc_performance_measurements(df=df_merged, tag='binding_2', is_train=is_train))
+            metrics.update(Performance.get_performance_measurements(df=df_merged, tag='binding_2', is_train=is_train))
 
         return Performance(metrics=metrics)
 
