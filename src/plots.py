@@ -94,6 +94,7 @@ class Plots(object):
                 if len(split) == 0 or split[0] != "ATOM":
                     continue
                 bind_annot = bind_annot_names[int(split[5]) - 1]
+                bind_annot = bind_annot.split(',')[0]
                 if bind_annot not in BIND_ANNOT_COLORS.keys():
                     color = 'purple'
                 else:

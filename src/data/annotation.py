@@ -77,6 +77,10 @@ class BindAnnotation(object):
     def tensor(self) -> np.array:
         return self._tensor
 
+    @tensor.setter
+    def tensor(self, tensor):
+        self._tensor = tensor
+
     def to_names(self) -> list:
         return list(map(lambda x: self.ids2name(x), self.to_ids()))
 
