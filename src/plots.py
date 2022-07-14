@@ -38,7 +38,7 @@ class Plots(object):
             color=color,
             labels={'color': color_title},
             hover_data=hover_data,
-            width=1800, height=1000
+            width=900, height=500
         )
         if show:
             fig.show()

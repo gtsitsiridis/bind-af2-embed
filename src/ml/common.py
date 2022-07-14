@@ -267,19 +267,28 @@ class Performance(object):
         else:
             # covonebind
             df1 = df.groupby('prot_id')[['prediction', 'target']].sum()
+            no_prediction_proteins = df1[df1.prediction == 0].index
             metrics['covonebind_' + tag] = len(df1[df1.prediction > 0]) / (len(df1))
 
-            # get protein based measurements
-            metrics_df = df.groupby('prot_id'). \
-                apply(lambda df_prot: pd.Series(Performance.calc_performance_measurements(df_prot, tag=tag)))
+            df = df[~df.prot_id.isin(no_prediction_proteins)]
 
-            # means with CI
-            metrics_df = metrics_df.apply(lambda metric: pd.Series(get_mean_ci(metric)), axis=0)
-            means = metrics_df.loc['mean']
-            cis = metrics_df.loc['ci']
-            cis.index = cis.index.map(lambda x: x + '_ci')
-            metrics.update(means.to_dict())
-            metrics.update(cis.to_dict())
+            # get protein based measurements
+            if len(df) > 0:
+                metrics_df = df.groupby('prot_id'). \
+                    apply(lambda df_prot: pd.Series(Performance.calc_performance_measurements(df_prot, tag=tag)))
+                metrics_df = metrics_df.apply(lambda metric: pd.Series(get_mean_ci(metric)), axis=0)
+                # means with CI
+                means = metrics_df.loc['mean'].to_dict()
+                cis = metrics_df.loc['ci']
+                cis.index = cis.index.map(lambda x: x + '_ci')
+                cis = cis.to_dict()
+            else:
+                means = {'acc_' + tag: 0, 'prec_' + tag: 0, 'rec_' + tag: 0, 'f1_' + tag: 0,
+                         'mcc_' + tag: 0}
+                cis = {k + '_ci': v for k, v in means.items()}
+
+            metrics.update(means)
+            metrics.update(cis)
 
         return metrics
 
