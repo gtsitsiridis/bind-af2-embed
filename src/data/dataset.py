@@ -88,7 +88,7 @@ class Dataset(object):
         max_length = config.params.get('max_length', None)
         min_length = config.params.get('min_length', None)
         subset = config.params.get('subset', None)
-        plddt_limit = config.params.get('subset', None)
+        plddt_limit = config.params.get('plddt_limit', None)
 
         files = config.files['splits'][mode]
         split_ids = [file['id'] for file in files]
