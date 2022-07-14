@@ -55,7 +55,6 @@ class CNN2DModel(torch.nn.Module):
                                 stride=stride, padding=padding),
                 activation(),
                 torch.nn.Dropout(dropout),
-                torch.nn.BatchNorm2d(feature_channels),
             ))
             distmap_in_channels = feature_channels
             feature_channels = feature_channels * 2
@@ -66,7 +65,6 @@ class CNN2DModel(torch.nn.Module):
                             stride=stride, padding=(padding, 0)),
             activation(),
             torch.nn.Dropout(dropout),
-            torch.nn.BatchNorm2d(feature_channels),
             torch.nn.Flatten(2),
         )
         self.out_channels = feature_channels
