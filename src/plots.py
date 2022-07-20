@@ -19,6 +19,9 @@ BIND_ANNOT_COLORS = {'other': 'black',
                      'small': 'green',
                      'nuclear': 'red'}
 
+RI_COLORS = ["#ff0000", "#bf0a3f", "#7f157f", "#3f20bf", "#002bff"]
+RI_LIMITS = np.linspace(0, 9, 5, False)
+
 
 class Plots(object):
 
@@ -72,13 +75,13 @@ class Plots(object):
 
     @staticmethod
     def show_pdb(pdb_file: str, color: str, bind_annot_names: list = None, show_sidechains: bool = False,
-                 show_mainchains: bool = False) -> py3Dmol.view:
+                 show_mainchains: bool = False, ri_tensor: np.array = None) -> py3Dmol.view:
         with open(pdb_file, 'r') as f:
             system = "".join([x for x in f])
         view = py3Dmol.view(js='https://3dmol.org/build/3Dmol.js', )
         view.addModel(system)
 
-        possible_colors = {'lDDT', 'rainbow', 'ligand'}
+        possible_colors = {'lDDT', 'rainbow', 'ligand', 'ri'}
         assert color in possible_colors, f'Invalid color given. Choose one of {str(possible_colors)}'
 
         if color == "lDDT":
@@ -99,6 +102,21 @@ class Plots(object):
                     color = 'purple'
                 else:
                     color = BIND_ANNOT_COLORS[bind_annot]
+                view.setStyle({'model': -1, 'serial': i + 1}, {"cartoon": {'color': color}})
+                i += 1
+        elif color == "ri":
+            assert ri_tensor is not None, 'ri_tensor should not be None if color="ri"'
+            i = 0
+            for line in system.split("\n"):
+                split = line.split()
+                if len(split) == 0 or split[0] != "ATOM":
+                    continue
+                ri = ri_tensor[int(split[5]) - 1]
+                color = 'black'
+                for j in reversed(range(len(RI_LIMITS))):
+                    if ri >= RI_LIMITS[j]:
+                        color = RI_COLORS[j]
+                        break
                 view.setStyle({'model': -1, 'serial': i + 1}, {"cartoon": {'color': color}})
                 i += 1
 
@@ -124,6 +142,21 @@ class Plots(object):
         plt.figure(figsize=(1, 0.1), dpi=dpi)
         ########################################
         for c in ["#FFFFFF", "#FF0000", "#FFFF00", "#00FF00", "#00FFFF", "#0000FF"]:
+            plt.bar(0, 0, color=c)
+        plt.legend(thresh, frameon=False,
+                   loc='center', ncol=6,
+                   handletextpad=1,
+                   columnspacing=1,
+                   markerscale=0.5, )
+        plt.axis(False)
+        return plt
+
+    @staticmethod
+    def plot_ri_legend(dpi=100):
+        thresh = ['RI:'] + list(map(lambda x: f'>{str(x)}', list(RI_LIMITS)))
+        plt.figure(figsize=(1, 0.1), dpi=dpi)
+        ########################################
+        for c in ["#FFFFFF"] + RI_COLORS:
             plt.bar(0, 0, color=c)
         plt.legend(thresh, frameon=False,
                    loc='center', ncol=6,

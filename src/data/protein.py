@@ -44,15 +44,18 @@ class Protein(object):
     def to_feature_tensor(self) -> np.array:
         return np.concatenate([self.embedding.tensor, self.structure.distogram_tensor_2D()], axis=1)
 
-    def show_structure(self, show_mainchains: bool = False, show_sidechains: bool = False, color='lDDT'):
+    def show_structure(self, show_mainchains: bool = False, show_sidechains: bool = False, color='lDDT',
+                       ri_tensor: np.array = None):
         Plots.show_pdb(pdb_file=self.structure.pdb_file, show_mainchains=show_mainchains,
                        bind_annot_names=self.bind_annotation.to_names(),
                        show_sidechains=show_sidechains,
-                       color=color)
+                       color=color, ri_tensor=ri_tensor)
         if color == 'lDDT':
             Plots.plot_plddt_legend()
         if color == 'ligand':
             Plots.plot_ligand_legend()
+        if color == 'ri':
+            Plots.plot_ri_legend()
 
     def show_umap(self, n_neighbors: int = 30, color: str = 'ligand', write: bool = False):
         distogram_tensor = self.structure.distogram_tensor_2D()
